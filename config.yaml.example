@@ -1,0 +1,6 @@
+db: host=127.0.0.1 user=user dbname=dbname password=password
+token:
+cache: 127.0.0.1
+sentry_url:
+bot_name:
+coin_market_api_key:
