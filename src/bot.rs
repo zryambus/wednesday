@@ -1,6 +1,8 @@
 use crate::cache::{Cache, CachePool};
 use crate::database::{Database, Pool, UpdateKind};
-use anyhow::Result;
+use crate::rates;
+
+use anyhow::{Result, Error, anyhow};
 use async_trait::async_trait;
 use futures::stream::BoxStream;
 use futures::{try_join, Stream};
@@ -8,10 +10,11 @@ use serde::Deserialize;
 use std::sync::Arc;
 use std::time::Duration;
 use teloxide::prelude::*;
-use teloxide::types::{Sticker, User};
+use teloxide::{types::{Sticker, User}};
 use teloxide::utils::command::BotCommand;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tracing_futures::Instrument;
+use tracing::instrument;
 
 #[derive(BotCommand, Debug)]
 #[command(rename = "lowercase", description = "These commands are supported:")]
@@ -50,9 +53,13 @@ pub enum Command {
     Stats,
     #[command(description = "show BTC and ETH dominance")]
     Dominance,
+    #[command(description = "show USD rate")]
+    USD,
+    #[command(description = "cast all in members in chat")]
+    All
 }
 
-#[tracing::instrument]
+#[instrument]
 pub async fn commands_handler(
     cx: UpdateWithCx<Bot, Message>,
     command: Command,
@@ -84,37 +91,37 @@ pub async fn commands_handler(
         Command::Stonks => on_crypto_status(cx, db).in_current_span().await?,
         Command::Rates => on_rates(cx).in_current_span().await?,
         Command::BTC => {
-            on_coin_with_24hr_change(cx, "BTC", &crate::rates::get_btc_rate_with_24hr_change)
+            on_coin_with_24hr_change(cx, "BTC", &rates::get_btc_rate_with_24hr_change)
                 .in_current_span()
                 .await?
         }
         Command::ETH => {
-            on_coin_with_24hr_change(cx, "ETH", &crate::rates::get_eth_rate_with_24hr_change)
+            on_coin_with_24hr_change(cx, "ETH", &rates::get_eth_rate_with_24hr_change)
                 .in_current_span()
                 .await?
         }
         Command::LTC => {
-            on_coin(cx, "LTC", &crate::rates::get_ltc_rate)
+            on_coin(cx, "LTC", &rates::get_ltc_rate)
                 .in_current_span()
                 .await?
         }
         Command::ETC => {
-            on_coin(cx, "ETC", &crate::rates::get_etc_rate)
+            on_coin(cx, "ETC", &rates::get_etc_rate)
                 .in_current_span()
                 .await?
         }
         Command::BCH => {
-            on_coin(cx, "BCH", &crate::rates::get_bch_rate)
+            on_coin(cx, "BCH", &rates::get_bch_rate)
                 .in_current_span()
                 .await?
         }
         Command::ADA => {
-            on_coin(cx, "ADA", &crate::rates::get_ada_rate)
+            on_coin(cx, "ADA", &rates::get_ada_rate)
                 .in_current_span()
                 .await?
         }
         Command::ZEE => {
-            on_coin_with_24hr_change(cx, "ZEE", &crate::rates::get_zee_rate_with_24hr_change)
+            on_coin_with_24hr_change(cx, "ZEE", &rates::get_zee_rate_with_24hr_change)
                 .in_current_span()
                 .await?
         }
@@ -123,13 +130,19 @@ pub async fn commands_handler(
             on_dominance(cx, cache_pool.clone())
                 .in_current_span()
                 .await?
-        }
+        },
+        Command::USD => {
+            on_usd(cx).await?
+        },
+        Command::All => {
+            on_all(cx).await?
+        },
     };
 
     Ok(())
 }
 
-#[tracing::instrument(skip(db))]
+#[instrument(skip(db))]
 pub async fn on_start(cx: UpdateWithCx<Bot, Message>, db: Database) -> Result<()> {
     if !db.is_active(cx.chat_id()).await? {
         db.add(cx.chat_id()).await?;
@@ -147,7 +160,7 @@ pub async fn on_start(cx: UpdateWithCx<Bot, Message>, db: Database) -> Result<()
     Ok(())
 }
 
-#[tracing::instrument(skip(db))]
+#[instrument(skip(db))]
 pub async fn on_stop(cx: UpdateWithCx<Bot, Message>, db: Database) -> Result<()> {
     if db.is_active(cx.chat_id()).await? {
         db.remove(cx.chat_id()).await?;
@@ -164,7 +177,7 @@ pub async fn on_stop(cx: UpdateWithCx<Bot, Message>, db: Database) -> Result<()>
     Ok(())
 }
 
-#[tracing::instrument(skip(db))]
+#[instrument(skip(db))]
 pub async fn on_status(cx: UpdateWithCx<Bot, Message>, db: Database) -> Result<()> {
     let active = db.is_active(cx.chat_id()).await?;
     let text = format!(
@@ -179,7 +192,7 @@ pub async fn on_status(cx: UpdateWithCx<Bot, Message>, db: Database) -> Result<(
     Ok(())
 }
 
-#[tracing::instrument(skip(db))]
+#[instrument(skip(db))]
 pub async fn on_crypto_start(cx: UpdateWithCx<Bot, Message>, db: Database) -> Result<()> {
     if !db.is_active_crypto(cx.chat_id()).await? {
         db.add_crypto(cx.chat_id()).await?;
@@ -197,7 +210,7 @@ pub async fn on_crypto_start(cx: UpdateWithCx<Bot, Message>, db: Database) -> Re
     Ok(())
 }
 
-#[tracing::instrument(skip(db))]
+#[instrument(skip(db))]
 pub async fn on_crypto_stop(cx: UpdateWithCx<Bot, Message>, db: Database) -> Result<()> {
     if db.is_active_crypto(cx.chat_id()).await? {
         db.remove_crypto(cx.chat_id()).await?;
@@ -214,7 +227,7 @@ pub async fn on_crypto_stop(cx: UpdateWithCx<Bot, Message>, db: Database) -> Res
     Ok(())
 }
 
-#[tracing::instrument(skip(db))]
+#[instrument(skip(db))]
 pub async fn on_crypto_status(cx: UpdateWithCx<Bot, Message>, db: Database) -> Result<()> {
     let active = db.is_active_crypto(cx.chat_id()).await?;
     let text = format!(
@@ -229,15 +242,15 @@ pub async fn on_crypto_status(cx: UpdateWithCx<Bot, Message>, db: Database) -> R
     Ok(())
 }
 
-#[tracing::instrument]
+#[instrument]
 pub async fn on_rates(cx: UpdateWithCx<Bot, Message>) -> Result<()> {
     let ref bot = cx.requester;
     let chat = cx.chat_id();
 
     let (btc, eth, zee) = try_join!(
-        crate::rates::get_btc_rate(),
-        crate::rates::get_eth_rate(),
-        crate::rates::get_zee_rate(),
+        rates::get_btc_rate(),
+        rates::get_eth_rate(),
+        rates::get_zee_rate(),
     )?;
 
     let text = format!("BTC = {}$\nETH = {}$\nZEE = {}$", btc, eth, zee);
@@ -246,7 +259,7 @@ pub async fn on_rates(cx: UpdateWithCx<Bot, Message>) -> Result<()> {
     Ok(())
 }
 
-#[tracing::instrument(skip(callback), fields(error))]
+#[instrument(skip(callback), fields(error))]
 async fn on_coin<Fut>(
     cx: UpdateWithCx<Bot, Message>,
     coin: &str,
@@ -266,7 +279,7 @@ where
     Ok(())
 }
 
-#[tracing::instrument(skip(callback))]
+#[instrument(skip(callback))]
 async fn on_coin_with_24hr_change<Fut>(
     cx: UpdateWithCx<Bot, Message>,
     coin: &str,
@@ -286,7 +299,7 @@ where
     Ok(())
 }
 
-#[tracing::instrument(skip(db))]
+#[instrument(skip(db))]
 async fn on_stats(cx: UpdateWithCx<Bot, Message>, db: Database) -> Result<()> {
     let user_id = cx.update.from().unwrap().id;
     let chat_id = cx.update.chat.id;
@@ -312,17 +325,15 @@ async fn on_stats(cx: UpdateWithCx<Bot, Message>, db: Database) -> Result<()> {
     Ok(())
 }
 
-#[tracing::instrument]
-pub async fn on_dominance(cx: UpdateWithCx<Bot, Message>, cache_pool: CachePool) -> Result<()> {
+#[instrument]
+pub async fn on_dominance(cx: UpdateWithCx<Bot, Message>, cache_pool: CachePool) -> Result<(), Error> {
     let cache = Cache::new(cache_pool);
     let (cached_btc, cached_eth) = try_join!(cache.get_btc_dominance(), cache.get_eth_dominance())?;
 
-    let (btc, eth) = if let (Some(btc), Some(eth)) = (cached_btc, cached_eth) {
-        (btc, eth)
-    } else {
+    async fn request_dominance(cache: &Cache) -> Result<(f64, f64)> {
         let url = "https://pro-api.coinmarketcap.com/v1/global-metrics/quotes/latest";
         let cfg = crate::config::Cfg::new()?;
-        let api_key = cfg.read()?.get_str("coin_market_api_key")?;
+        let api_key = cfg.coin_market_api_key()?;
 
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
@@ -333,7 +344,7 @@ pub async fn on_dominance(cx: UpdateWithCx<Bot, Message>, cache_pool: CachePool)
             .default_headers(headers)
             .build()?;
 
-        #[derive(Deserialize)]
+        #[derive(Deserialize, Debug)]
         struct APIResponse {
             // status: serde_json::Value,
             data: serde_json::Value,
@@ -344,7 +355,16 @@ pub async fn on_dominance(cx: UpdateWithCx<Bot, Message>, cache_pool: CachePool)
             btc_dominance: f64,
             eth_dominance: f64,
         }
-        let response: APIResponse = client.get(url).send().await?.json().await?;
+
+        let response = client.get(url).send().await?.json::<APIResponse>().await;
+        let response = if let Ok(resp) = response {
+            resp
+        } else {
+            let err = response.unwrap_err();
+            tracing::error!("Error: {}", err);
+            return Err(anyhow!(err));
+        };
+        
         let data: Data = serde_json::from_value(response.data)?;
 
         try_join!(
@@ -352,7 +372,13 @@ pub async fn on_dominance(cx: UpdateWithCx<Bot, Message>, cache_pool: CachePool)
             cache.set_eth_dominance(data.eth_dominance)
         )?;
 
-        (data.btc_dominance, data.eth_dominance)
+        Ok((data.btc_dominance, data.eth_dominance))
+    }
+
+    let (btc, eth) = if let (Some(btc), Some(eth)) = (cached_btc, cached_eth) {
+        (btc, eth)
+    } else {
+        request_dominance(&cache).await?
     };
 
     let text = format!("BTC dominance = {:.2}%\nETH dominance = {:.2}%", btc, eth);
@@ -434,10 +460,15 @@ pub async fn repl<N, Cmd>(
         .await;
 }
 
-#[tracing::instrument]
+#[instrument]
 pub async fn text_handler(cx: UpdateWithCx<Bot, Message>, _text: String, pool: Pool) -> Result<()> {
     let db = Database::new(pool.clone()).await?;
-    let user_id = cx.update.from().unwrap().id;
+    let user_id = if let Some(from) = cx.update.from() {
+        from.id
+    } else {
+        tracing::debug!("Could not update statistics for message: {:?}", cx);
+        return Ok(());
+    };
     let chat_id = cx.update.chat.id;
 
     update_users_mapping(&cx.requester, cx.update.from(), pool.clone()).await?;
@@ -447,13 +478,13 @@ pub async fn text_handler(cx: UpdateWithCx<Bot, Message>, _text: String, pool: P
     Ok(())
 }
 
-#[tracing::instrument]
+#[instrument]
 pub async fn messages_handler(
     cx: UpdateWithCx<Bot, Message>,
     message: Message,
     pool: Pool,
 ) -> Result<()> {
-    let impl_fn = async move || -> Result<()> {
+    async fn impl_fn(cx: UpdateWithCx<Bot, Message>, message: Message, pool: Pool) -> Result<()> {
         let db = Database::new(pool.clone()).await?;
         let user_id = cx.update.from().unwrap().id;
         let chat_id = cx.update.chat.id;
@@ -471,9 +502,9 @@ pub async fn messages_handler(
         }
 
         Ok(())
-    };
+    }
 
-    if let Err(e) = impl_fn().await {
+    if let Err(e) = impl_fn(cx, message, pool).await {
         sentry::integrations::anyhow::capture_anyhow(&e);
     }
 
@@ -504,7 +535,7 @@ where
     }
 }
 
-#[tracing::instrument]
+#[instrument]
 pub async fn update_users_mapping(_bot: &Bot, user: Option<&User>, pool: Pool) -> Result<()> {
     let user = match user {
         Some(u) => u,
@@ -528,7 +559,7 @@ pub async fn update_users_mapping(_bot: &Bot, user: Option<&User>, pool: Pool) -
     Ok(())
 }
 
-#[tracing::instrument]
+#[instrument]
 pub async fn process_sticker(cx: UpdateWithCx<Bot, Message>, sticker: &Sticker) -> Result<()> {
     const FORBIDDEN_STICKER_ID: &'static str = "AgADvgADzHD_Ag";
 
@@ -574,6 +605,30 @@ pub async fn process_sticker(cx: UpdateWithCx<Bot, Message>, sticker: &Sticker) 
     // }
     //
     // Ok(())
+}
+
+#[instrument]
+async fn on_usd(cx: UpdateWithCx<Bot, Message>) -> Result<()> {
+    let ref bot = cx.requester;
+    let chat = cx.chat_id();
+
+    let rate = rates::get_usd_rate().await?;
+
+    let text = format!("Курс {} = {:.2}₽", "USD", rate);
+
+    bot.send_message(chat, &text).send().await?;
+    Ok(())
+}
+
+#[instrument]
+async fn on_all(cx: UpdateWithCx<Bot, Message>) -> Result<()> {
+    let ref _bot = cx.requester;
+    let ref msg = cx.update;
+    
+    let _user_id = msg.from().unwrap().id;
+    let _chat_id = msg.chat.id;
+
+    Ok(())
 }
 
 #[async_trait]

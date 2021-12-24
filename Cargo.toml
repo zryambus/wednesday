@@ -4,31 +4,34 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.43"
-thiserror = "1.0.26"
+anyhow = "1.0.51"
+thiserror = "1.0.30"
 config = "0.11.0"
 chrono = "0.4.19"
 clokwerk = "0.3.5"
 teloxide-core = { version = "0.3.4", default-features = false }
 teloxide = { version = "0.5.3", default-features = false, features = ["ctrlc_handler", "rustls", "macros"] }
 log = "0.4.14"
-tokio = { version =  "1.10.0", features = ["rt-multi-thread", "macros"] }
+tokio = { version =  "1.15.0", features = ["rt-multi-thread", "macros"] }
 tokio-stream = "0.1.7"
 rand = "0.8.4"
-serde = { version = "1.0.130", features = ["derive"] }
-serde_json = "1.0.66"
+serde = { version = "1.0.132", features = ["derive"] }
+serde_json = "1.0.73"
 serde_cbor = "0.11.2"
-reqwest = { version = "0.11.4", default-features = false, features = ["rustls-tls", "json", "serde_json"] }
-futures = "0.3.16"
-sea-query = { version = "0.15.0", features = ["with-chrono"] }
+reqwest = { version = "0.11.7", default-features = false, features = ["rustls-tls", "json", "serde_json"] }
+futures = "0.3.19"
+sea-query = { version = "0.20.0", features = ["with-chrono"] }
 bb8 = "0.7.1"
 bb8-postgres = "0.7.0"
 bb8-redis = "0.10.1"
-rust-embed = "6.2.0"
-sentry = { git = "https://github.com/getsentry/sentry-rust", rev = "fc4492f", default-features = false, features = ["anyhow", "reqwest", "rustls", "backtrace", "contexts", "panic", "log", "tracing"] }
+rust-embed = "6.3.0"
+sentry = { git = "https://github.com/getsentry/sentry-rust", rev = "2a15988", default-features = false, features = ["anyhow", "reqwest", "rustls", "backtrace", "contexts", "panic", "log", "tracing"] }
 #sentry = { path = "../sentry-rust/sentry", default-features = false, features = ["anyhow", "reqwest", "rustls", "backtrace", "contexts", "panic", "log", "tracing"] }
 tracing = "0.1.29"
 tracing-futures = "0.2.5"
-tracing-subscriber = { version = "0.3.1", features = ["fmt", "tracing-log", "registry", "std"] }
+tracing-subscriber = { version = "0.3.3", features = ["fmt", "tracing-log", "registry", "std"] }
 tracing-log = "0.1.2"
-async-trait = "0.1.51"
+async-trait = "0.1.52"
+
+[profile.release]
+debug = true

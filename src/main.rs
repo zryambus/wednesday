@@ -1,5 +1,3 @@
-#![feature(async_closure, fn_traits)]
-
 mod bot;
 mod cache;
 mod config;
@@ -11,6 +9,7 @@ mod toads;
 
 use crate::bot::BotHandlers;
 use crate::database::Database;
+
 use anyhow::Result;
 use bb8_postgres::tokio_postgres::NoTls;
 use std::sync::Arc;
@@ -18,8 +17,8 @@ use teloxide;
 use tracing_subscriber::{prelude::*, registry::Registry};
 
 async fn try_main(cfg: config::Cfg) -> Result<()> {
-    let db_path = cfg.read()?.get_str("db")?;
-    let cache_path = cfg.read()?.get_str("cache")?;
+    let db_path = cfg.db()?;
+    let cache_path = cfg.cache()?;
 
     let manager = bb8_postgres::PostgresConnectionManager::new(db_path.parse().unwrap(), NoTls);
     let pool = bb8::Pool::builder().build(manager).await?;
@@ -43,14 +42,14 @@ async fn try_main(cfg: config::Cfg) -> Result<()> {
         tracing::debug!("database connection established");
     }
 
-    let token = cfg.read()?.get_str("token")?;
+    let token = cfg.token()?;
     let bot = teloxide::Bot::new(token);
 
     let _scheduler = scheduler::Scheduler::new(bot.clone(), pool.clone(), cache_pool.clone());
 
     let handlers = Arc::new(BotHandlers::new(pool.clone(), cache_pool.clone()));
 
-    bot::repl(bot, handlers, cfg.read()?.get_str("bot_name")?).await;
+    bot::repl(bot, handlers, cfg.bot_name()?).await;
 
     Ok(())
 }
@@ -68,7 +67,7 @@ async fn main() {
         options.debug = true;
     }
 
-    let _guard = sentry::init((cfg.read().unwrap().get_str("sentry_url").unwrap(), options));
+    let _guard = sentry::init((cfg.sentry_url().unwrap(), options));
 
     Registry::default()
         .with(sentry::integrations::tracing::layer())
