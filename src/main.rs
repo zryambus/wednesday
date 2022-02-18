@@ -14,7 +14,8 @@ use anyhow::Result;
 use bb8_postgres::tokio_postgres::NoTls;
 use std::sync::Arc;
 use teloxide;
-use tracing_subscriber::{prelude::*, registry::Registry};
+use tracing_subscriber::{prelude::*, registry::Registry, fmt};
+use tracing::level_filters::LevelFilter;
 
 async fn try_main(cfg: config::Cfg) -> Result<()> {
     let db_path = cfg.db()?;
@@ -56,11 +57,17 @@ async fn try_main(cfg: config::Cfg) -> Result<()> {
 
 #[tokio::main]
 async fn main() {
+    let hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        hook(info);
+        std::process::exit(1);
+    }));
+
     let cfg = config::Cfg::new().expect("Could not initialize config");
 
     let mut options = sentry::ClientOptions::new();
     options.release = sentry::release_name!();
-    options.traces_sample_rate = 0.01;
+    options.traces_sample_rate = 0.5;
 
     #[cfg(debug_assertions)]
     {
@@ -69,8 +76,13 @@ async fn main() {
 
     let _guard = sentry::init((cfg.sentry_url().unwrap(), options));
 
+    let fmt_layer = fmt::layer()
+        .with_target(false)
+        .with_filter(LevelFilter::INFO);
+
     Registry::default()
         .with(sentry::integrations::tracing::layer())
+        .with(fmt_layer)
         .try_init()
         .unwrap();
 

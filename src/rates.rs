@@ -9,12 +9,31 @@ async fn request_rate_from_binance(coin: &str) -> Result<f64> {
         "https://api.binance.com/api/v3/ticker/price?symbol={}USDT",
         coin
     );
-    let data = reqwest::get(url)
-        .await?
-        .json::<HashMap<String, String>>()
-        .await?;
-    let rate = data["price"].parse::<f64>()?;
-    Ok(rate)
+
+    let mut attempt = 0;
+
+    while attempt < 3 {
+        let response = reqwest::get(&url).await;
+        let response = if let Err(e) = response {
+            tracing::debug!("Error while trying to get data from {}: {}\nAttempt {}", url, e, attempt + 1);
+            if e.is_connect() {
+                attempt += 1;
+                continue;
+            }
+            return Err(anyhow!(e));
+        } else {
+            response.unwrap()
+        };
+
+        let data = response
+            .json::<HashMap<String, String>>()
+            .await?;
+
+        let rate = data["price"].parse::<f64>()?;
+        return Ok(rate);
+    }
+
+    return Err(anyhow!("Too many attempts"));
 }
 
 #[instrument]
@@ -97,11 +116,6 @@ pub async fn get_etc_rate() -> Result<f64> {
 }
 
 #[instrument]
-pub async fn get_bch_rate() -> Result<f64> {
-    request_rate_from_coingecko("bitcoin-cash").await
-}
-
-#[instrument]
 pub async fn get_ada_rate() -> Result<f64> {
     request_rate_from_coingecko("cardano").await
 }
@@ -114,6 +128,21 @@ pub async fn get_zee_rate() -> Result<f64> {
 #[instrument]
 pub async fn get_zee_rate_with_24hr_change() -> Result<(f64, f64)> {
     request_rate_from_coingecko_with_24hr_change("zeroswap").await
+}
+
+#[instrument]
+pub async fn get_sol_rate_with_24hr_change() -> Result<(f64, f64)> {
+    request_rate_from_coingecko_with_24hr_change("solana").await
+}
+
+#[instrument]
+pub async fn get_bnb_rate_with_24hr_change() -> Result<(f64, f64)> {
+    request_rate_from_coingecko_with_24hr_change("binancecoin").await
+}
+
+#[instrument]
+pub async fn get_luna_rate_with_24hr_change() -> Result<(f64, f64)> {
+    request_rate_from_coingecko_with_24hr_change("terra-luna").await
 }
 
 #[instrument]

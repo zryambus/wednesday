@@ -25,8 +25,7 @@ bb8 = "0.7.1"
 bb8-postgres = "0.7.0"
 bb8-redis = "0.10.1"
 rust-embed = "6.3.0"
-sentry = { git = "https://github.com/getsentry/sentry-rust", rev = "2a15988", default-features = false, features = ["anyhow", "reqwest", "rustls", "backtrace", "contexts", "panic", "log", "tracing"] }
-#sentry = { path = "../sentry-rust/sentry", default-features = false, features = ["anyhow", "reqwest", "rustls", "backtrace", "contexts", "panic", "log", "tracing"] }
+sentry = { version = "0.24.3", default-features = false, features = ["anyhow", "reqwest", "rustls", "backtrace", "contexts", "panic", "log", "tracing"] }
 tracing = "0.1.29"
 tracing-futures = "0.2.5"
 tracing-subscriber = { version = "0.3.3", features = ["fmt", "tracing-log", "registry", "std"] }

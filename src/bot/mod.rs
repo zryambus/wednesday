@@ -13,8 +13,11 @@ use teloxide::prelude::*;
 use teloxide::{types::{Sticker, User}};
 use teloxide::utils::command::BotCommand;
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use tracing_futures::Instrument;
 use tracing::instrument;
+
+mod wednesday;
+
+use wednesday::WednesdayBot;
 
 #[derive(BotCommand, Debug)]
 #[command(rename = "lowercase", description = "These commands are supported:")]
@@ -43,12 +46,16 @@ pub enum Command {
     LTC,
     #[command(description = "show rate of ETC to USD")]
     ETC,
-    #[command(description = "show rate of BCH to USD")]
-    BCH,
+    #[command(description = "show rate of SOL to USD")]
+    SOL,
     #[command(description = "show rate of ADA to USD")]
     ADA,
     #[command(description = "show rate of ZEE to USD")]
     ZEE,
+    #[command(description = "show rate of BNB to USD")]
+    BNB,
+    #[command(description = "show rate of LUNA to USD")]
+    LUNA,
     #[command(description = "show statistics")]
     Stats,
     #[command(description = "show BTC and ETH dominance")]
@@ -59,7 +66,6 @@ pub enum Command {
     All
 }
 
-#[instrument]
 pub async fn commands_handler(
     cx: UpdateWithCx<Bot, Message>,
     command: Command,
@@ -74,61 +80,60 @@ pub async fn commands_handler(
         Command::Help => {
             cx.answer(Command::descriptions())
                 .send()
-                .in_current_span()
                 .await?;
         }
         Command::Start => {
-            on_start(cx, db).in_current_span().await?;
+            on_start(cx, db).await?;
         }
         Command::Stop => {
-            on_stop(cx, db).in_current_span().await?;
+            on_stop(cx, db).await?;
         }
         Command::Status => {
-            on_status(cx, db).in_current_span().await?;
+            on_status(cx, db).await?;
         }
-        Command::WhenLambo => on_crypto_start(cx, db).in_current_span().await?,
-        Command::NotToday => on_crypto_stop(cx, db).in_current_span().await?,
-        Command::Stonks => on_crypto_status(cx, db).in_current_span().await?,
-        Command::Rates => on_rates(cx).in_current_span().await?,
+        Command::WhenLambo => on_crypto_start(cx, db).await?,
+        Command::NotToday => on_crypto_stop(cx, db).await?,
+        Command::Stonks => on_crypto_status(cx, db).await?,
+        Command::Rates => on_rates(cx).await?,
         Command::BTC => {
             on_coin_with_24hr_change(cx, "BTC", &rates::get_btc_rate_with_24hr_change)
-                .in_current_span()
                 .await?
         }
         Command::ETH => {
             on_coin_with_24hr_change(cx, "ETH", &rates::get_eth_rate_with_24hr_change)
-                .in_current_span()
                 .await?
         }
         Command::LTC => {
             on_coin(cx, "LTC", &rates::get_ltc_rate)
-                .in_current_span()
                 .await?
         }
         Command::ETC => {
             on_coin(cx, "ETC", &rates::get_etc_rate)
-                .in_current_span()
                 .await?
         }
-        Command::BCH => {
-            on_coin(cx, "BCH", &rates::get_bch_rate)
-                .in_current_span()
+        Command::SOL => {
+            on_coin_with_24hr_change(cx, "SOL", &rates::get_sol_rate_with_24hr_change)
                 .await?
         }
         Command::ADA => {
             on_coin(cx, "ADA", &rates::get_ada_rate)
-                .in_current_span()
                 .await?
         }
         Command::ZEE => {
             on_coin_with_24hr_change(cx, "ZEE", &rates::get_zee_rate_with_24hr_change)
-                .in_current_span()
                 .await?
         }
-        Command::Stats => on_stats(cx, db).in_current_span().await?,
+        Command::BNB => {
+            on_coin_with_24hr_change(cx, "BNB", &rates::get_bnb_rate_with_24hr_change)
+                .await?
+        }
+        Command::LUNA => {
+            on_coin_with_24hr_change(cx, "LUNA", &rates::get_luna_rate_with_24hr_change)
+                .await?
+        }
+        Command::Stats => on_stats(cx, db).await?,
         Command::Dominance => {
             on_dominance(cx, cache_pool.clone())
-                .in_current_span()
                 .await?
         },
         Command::USD => {
@@ -268,14 +273,14 @@ async fn on_coin<Fut>(
 where
     Fut: std::future::Future<Output = Result<f64>> + Send,
 {
-    let ref bot = cx.requester;
-    let chat = cx.chat_id();
+    let bot = WednesdayBot::new(cx);
+    let chat = bot.chat_id();
 
     let rate = callback().await?;
 
     let text = format!("Курс {} = {}$", coin, rate);
 
-    bot.send_message(chat, &text).send().await?;
+    bot.send_text(chat, text).await?;
     Ok(())
 }
 
@@ -473,7 +478,7 @@ pub async fn text_handler(cx: UpdateWithCx<Bot, Message>, _text: String, pool: P
 
     update_users_mapping(&cx.requester, cx.update.from(), pool.clone()).await?;
 
-    db.update_statistics(chat_id, user_id, crate::database::UpdateKind::TextMessage)
+    db.update_statistics(chat_id, user_id, UpdateKind::TextMessage)
         .await?;
     Ok(())
 }
@@ -485,8 +490,13 @@ pub async fn messages_handler(
     pool: Pool,
 ) -> Result<()> {
     async fn impl_fn(cx: UpdateWithCx<Bot, Message>, message: Message, pool: Pool) -> Result<()> {
+        let user_id = if let Some(from) = cx.update.from() {
+            from.id
+        } else {
+            return Ok(());
+        };
+
         let db = Database::new(pool.clone()).await?;
-        let user_id = cx.update.from().unwrap().id;
         let chat_id = cx.update.chat.id;
 
         update_users_mapping(&cx.requester, cx.update.from(), pool.clone()).await?;
@@ -581,30 +591,6 @@ pub async fn process_sticker(cx: UpdateWithCx<Bot, Message>, sticker: &Sticker) 
     }
 
     return Ok(());
-
-    // let user = if let Some(user) = cx.update.from() {
-    //     user
-    // } else {
-    //     return Ok(());
-    // };
-    //
-    // if user.id == 203295139 {
-    //     if rand::random::<f64>().round() as i64 != 1 {
-    //         return Ok(());
-    //     }
-    //
-    //     cx.requester
-    //         .delete_message(cx.chat_id(), cx.update.id)
-    //         .send()
-    //         .await?;
-    //
-    //     let username = user.username.as_ref().or(Some(&user.first_name)).unwrap();
-    //     let text = format!("@{}, иди увольняй работяг!", username);
-    //
-    //     cx.requester.send_message(cx.chat_id(), text).send().await?;
-    // }
-    //
-    // Ok(())
 }
 
 #[instrument]
