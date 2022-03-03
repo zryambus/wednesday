@@ -6,7 +6,7 @@ use crate::database::{Database, Pool};
 use clokwerk::{Interval::*, ScheduleHandle, TimeUnits};
 use std::sync::Arc;
 use std::time::Duration;
-use teloxide::{prelude::*, ApiError, RequestError};
+use teloxide::{prelude2::*, ApiError, RequestError};
 
 use rate_check_providers::{
     BTCCheckProvider, ETHCheckProvider, RateCheckProvider, ZEECheckProvider,

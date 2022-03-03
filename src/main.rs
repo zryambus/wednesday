@@ -7,15 +7,13 @@ mod rates;
 mod scheduler;
 mod toads;
 
-use crate::bot::BotHandlers;
 use crate::database::Database;
 
 use anyhow::Result;
 use bb8_postgres::tokio_postgres::NoTls;
-use std::sync::Arc;
-use teloxide;
 use tracing_subscriber::{prelude::*, registry::Registry, fmt};
 use tracing::level_filters::LevelFilter;
+use teloxide::prelude2::*;
 
 async fn try_main(cfg: config::Cfg) -> Result<()> {
     let db_path = cfg.db()?;
@@ -48,9 +46,12 @@ async fn try_main(cfg: config::Cfg) -> Result<()> {
 
     let _scheduler = scheduler::Scheduler::new(bot.clone(), pool.clone(), cache_pool.clone());
 
-    let handlers = Arc::new(BotHandlers::new(pool.clone(), cache_pool.clone()));
-
-    bot::repl(bot, handlers, cfg.bot_name()?).await;
+    Dispatcher::builder(bot, crate::bot::get_handler())
+        .dependencies(dptree::deps![pool.clone(), cache_pool.clone()])
+        .build()
+        .setup_ctrlc_handler()
+        .dispatch()
+        .await;
 
     Ok(())
 }

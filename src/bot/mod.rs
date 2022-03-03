@@ -3,16 +3,13 @@ use crate::database::{Database, Pool, UpdateKind};
 use crate::rates;
 
 use anyhow::{Result, Error, anyhow};
-use async_trait::async_trait;
-use futures::stream::BoxStream;
-use futures::{try_join, Stream};
+use futures::{try_join};
 use serde::Deserialize;
-use std::sync::Arc;
-use std::time::Duration;
-use teloxide::prelude::*;
-use teloxide::{types::{Sticker, User}};
-use teloxide::utils::command::BotCommand;
-use tokio_stream::wrappers::UnboundedReceiverStream;
+use teloxide::dispatching2::UpdateHandler;
+use teloxide::{
+    prelude2::*, types::{Sticker, User, Update},
+    utils::command::BotCommand
+};
 use tracing::instrument;
 
 mod wednesday;
@@ -66,81 +63,76 @@ pub enum Command {
     All
 }
 
-pub async fn commands_handler(
-    cx: UpdateWithCx<Bot, Message>,
-    command: Command,
-    pool: Pool,
-    cache_pool: CachePool,
-) -> Result<()> {
+async fn commands_endpoint(bot: Bot, msg: Message, command: Command, pool: Pool, cache_pool: CachePool) -> Result<()> {
     let db = Database::new(pool.clone()).await?;
 
-    update_users_mapping(&cx.requester, cx.update.from(), pool.clone()).await?;
+    update_users_mapping(&bot, msg.from(), pool.clone()).await?;
 
     match command {
         Command::Help => {
-            cx.answer(Command::descriptions())
+            bot.send_message(msg.chat_id(), Command::descriptions())
                 .send()
                 .await?;
         }
         Command::Start => {
-            on_start(cx, db).await?;
+            on_start(bot, msg, db).await?;
         }
         Command::Stop => {
-            on_stop(cx, db).await?;
+            on_stop(bot, msg, db).await?;
         }
         Command::Status => {
-            on_status(cx, db).await?;
+            on_status(bot, msg, db).await?;
         }
-        Command::WhenLambo => on_crypto_start(cx, db).await?,
-        Command::NotToday => on_crypto_stop(cx, db).await?,
-        Command::Stonks => on_crypto_status(cx, db).await?,
-        Command::Rates => on_rates(cx).await?,
+        Command::WhenLambo => on_crypto_start(bot, msg, db).await?,
+        Command::NotToday => on_crypto_stop(bot, msg, db).await?,
+        Command::Stonks => on_crypto_status(bot, msg, db).await?,
+        Command::Rates => on_rates(bot, msg).await?,
         Command::BTC => {
-            on_coin_with_24hr_change(cx, "BTC", &rates::get_btc_rate_with_24hr_change)
+            on_coin_with_24hr_change(bot, msg, "BTC", &rates::get_btc_rate_with_24hr_change)
                 .await?
         }
         Command::ETH => {
-            on_coin_with_24hr_change(cx, "ETH", &rates::get_eth_rate_with_24hr_change)
+            on_coin_with_24hr_change(bot, msg, "ETH", &rates::get_eth_rate_with_24hr_change)
                 .await?
         }
         Command::LTC => {
-            on_coin(cx, "LTC", &rates::get_ltc_rate)
+            on_coin(bot, msg, "LTC", &rates::get_ltc_rate)
                 .await?
         }
         Command::ETC => {
-            on_coin(cx, "ETC", &rates::get_etc_rate)
+            on_coin(bot, msg, "ETC", &rates::get_etc_rate)
                 .await?
         }
         Command::SOL => {
-            on_coin_with_24hr_change(cx, "SOL", &rates::get_sol_rate_with_24hr_change)
+            on_coin_with_24hr_change(bot, msg, "SOL", &rates::get_sol_rate_with_24hr_change)
                 .await?
         }
         Command::ADA => {
-            on_coin(cx, "ADA", &rates::get_ada_rate)
+            on_coin(bot, msg, "ADA", &rates::get_ada_rate)
                 .await?
         }
         Command::ZEE => {
-            on_coin_with_24hr_change(cx, "ZEE", &rates::get_zee_rate_with_24hr_change)
+            on_coin_with_24hr_change(bot, msg, "ZEE", &rates::get_zee_rate_with_24hr_change)
                 .await?
         }
         Command::BNB => {
-            on_coin_with_24hr_change(cx, "BNB", &rates::get_bnb_rate_with_24hr_change)
+            on_coin_with_24hr_change(bot, msg, "BNB", &rates::get_bnb_rate_with_24hr_change)
                 .await?
         }
         Command::LUNA => {
-            on_coin_with_24hr_change(cx, "LUNA", &rates::get_luna_rate_with_24hr_change)
+            on_coin_with_24hr_change(bot, msg, "LUNA", &rates::get_luna_rate_with_24hr_change)
                 .await?
         }
-        Command::Stats => on_stats(cx, db).await?,
+        Command::Stats => on_stats(bot, msg, db).await?,
         Command::Dominance => {
-            on_dominance(cx, cache_pool.clone())
+            on_dominance(bot, msg, cache_pool.clone())
                 .await?
         },
         Command::USD => {
-            on_usd(cx).await?
+            on_usd(bot, msg).await?
         },
         Command::All => {
-            on_all(cx).await?
+            on_all(bot, msg).await?
         },
     };
 
@@ -148,16 +140,16 @@ pub async fn commands_handler(
 }
 
 #[instrument(skip(db))]
-pub async fn on_start(cx: UpdateWithCx<Bot, Message>, db: Database) -> Result<()> {
-    if !db.is_active(cx.chat_id()).await? {
-        db.add(cx.chat_id()).await?;
-        cx.requester
-            .send_message(cx.chat_id(), "✅ Chat was added to list")
+pub async fn on_start(bot: Bot, msg: Message, db: Database) -> Result<()> {
+    if !db.is_active(msg.chat_id()).await? {
+        db.add(msg.chat_id()).await?;
+        bot
+            .send_message(msg.chat_id(), "✅ Chat was added to list")
             .send()
             .await?;
     } else {
-        cx.requester
-            .send_message(cx.chat_id(), "⚠ Current chat is already in the list")
+        bot
+            .send_message(msg.chat_id(), "⚠ Current chat is already in the list")
             .send()
             .await?;
     }
@@ -166,16 +158,16 @@ pub async fn on_start(cx: UpdateWithCx<Bot, Message>, db: Database) -> Result<()
 }
 
 #[instrument(skip(db))]
-pub async fn on_stop(cx: UpdateWithCx<Bot, Message>, db: Database) -> Result<()> {
-    if db.is_active(cx.chat_id()).await? {
-        db.remove(cx.chat_id()).await?;
-        cx.requester
-            .send_message(cx.chat_id(), "✅ Chat was removed from list")
+pub async fn on_stop(bot: Bot, msg: Message, db: Database) -> Result<()> {
+    if db.is_active(msg.chat_id()).await? {
+        db.remove(msg.chat_id()).await?;
+        bot
+            .send_message(msg.chat_id(), "✅ Chat was removed from list")
             .send()
             .await?;
     } else {
-        cx.requester
-            .send_message(cx.chat_id(), "⚠ Current chat is not in the list")
+        bot
+            .send_message(msg.chat_id(), "⚠ Current chat is not in the list")
             .send()
             .await?;
     }
@@ -183,8 +175,8 @@ pub async fn on_stop(cx: UpdateWithCx<Bot, Message>, db: Database) -> Result<()>
 }
 
 #[instrument(skip(db))]
-pub async fn on_status(cx: UpdateWithCx<Bot, Message>, db: Database) -> Result<()> {
-    let active = db.is_active(cx.chat_id()).await?;
+pub async fn on_status(bot: Bot, msg: Message, db: Database) -> Result<()> {
+    let active = db.is_active(msg.chat_id()).await?;
     let text = format!(
         "Current chat is {}",
         if active {
@@ -193,21 +185,21 @@ pub async fn on_status(cx: UpdateWithCx<Bot, Message>, db: Database) -> Result<(
             "not in the list ❌"
         }
     );
-    cx.requester.send_message(cx.chat_id(), text).send().await?;
+    bot.send_message(msg.chat_id(), text).send().await?;
     Ok(())
 }
 
 #[instrument(skip(db))]
-pub async fn on_crypto_start(cx: UpdateWithCx<Bot, Message>, db: Database) -> Result<()> {
-    if !db.is_active_crypto(cx.chat_id()).await? {
-        db.add_crypto(cx.chat_id()).await?;
-        cx.requester
-            .send_message(cx.chat_id(), "✅ Chat was added to crypto list")
+pub async fn on_crypto_start(bot: Bot, msg: Message, db: Database) -> Result<()> {
+    if !db.is_active_crypto(msg.chat_id()).await? {
+        db.add_crypto(msg.chat_id()).await?;
+        bot
+            .send_message(msg.chat_id(), "✅ Chat was added to crypto list")
             .send()
             .await?;
     } else {
-        cx.requester
-            .send_message(cx.chat_id(), "⚠ Current chat is already in the crypto list")
+        bot
+            .send_message(msg.chat_id(), "⚠ Current chat is already in the crypto list")
             .send()
             .await?;
     }
@@ -216,16 +208,16 @@ pub async fn on_crypto_start(cx: UpdateWithCx<Bot, Message>, db: Database) -> Re
 }
 
 #[instrument(skip(db))]
-pub async fn on_crypto_stop(cx: UpdateWithCx<Bot, Message>, db: Database) -> Result<()> {
-    if db.is_active_crypto(cx.chat_id()).await? {
-        db.remove_crypto(cx.chat_id()).await?;
-        cx.requester
-            .send_message(cx.chat_id(), "✅ Chat was removed from crypto list")
+pub async fn on_crypto_stop(bot: Bot, msg: Message, db: Database) -> Result<()> {
+    if db.is_active_crypto(msg.chat_id()).await? {
+        db.remove_crypto(msg.chat_id()).await?;
+        bot
+            .send_message(msg.chat_id(), "✅ Chat was removed from crypto list")
             .send()
             .await?;
     } else {
-        cx.requester
-            .send_message(cx.chat_id(), "⚠ Current chat is not in the crypto list")
+        bot
+            .send_message(msg.chat_id(), "⚠ Current chat is not in the crypto list")
             .send()
             .await?;
     }
@@ -233,8 +225,8 @@ pub async fn on_crypto_stop(cx: UpdateWithCx<Bot, Message>, db: Database) -> Res
 }
 
 #[instrument(skip(db))]
-pub async fn on_crypto_status(cx: UpdateWithCx<Bot, Message>, db: Database) -> Result<()> {
-    let active = db.is_active_crypto(cx.chat_id()).await?;
+pub async fn on_crypto_status(bot: Bot, msg: Message, db: Database) -> Result<()> {
+    let active = db.is_active_crypto(msg.chat_id()).await?;
     let text = format!(
         "Current crypto chat is {}",
         if active {
@@ -243,14 +235,14 @@ pub async fn on_crypto_status(cx: UpdateWithCx<Bot, Message>, db: Database) -> R
             "not in the list ❌"
         }
     );
-    cx.requester.send_message(cx.chat_id(), text).send().await?;
+    bot.send_message(msg.chat_id(), text).send().await?;
     Ok(())
 }
 
 #[instrument]
-pub async fn on_rates(cx: UpdateWithCx<Bot, Message>) -> Result<()> {
-    let ref bot = cx.requester;
-    let chat = cx.chat_id();
+pub async fn on_rates(bot: Bot, msg: Message ) -> Result<()> {
+    let ref bot = bot;
+    let chat = msg.chat_id();
 
     let (btc, eth, zee) = try_join!(
         rates::get_btc_rate(),
@@ -266,14 +258,14 @@ pub async fn on_rates(cx: UpdateWithCx<Bot, Message>) -> Result<()> {
 
 #[instrument(skip(callback), fields(error))]
 async fn on_coin<Fut>(
-    cx: UpdateWithCx<Bot, Message>,
+    bot: Bot, msg: Message,
     coin: &str,
     callback: impl FnOnce() -> Fut,
 ) -> Result<()>
 where
     Fut: std::future::Future<Output = Result<f64>> + Send,
 {
-    let bot = WednesdayBot::new(cx);
+    let bot = WednesdayBot::new(bot, msg);
     let chat = bot.chat_id();
 
     let rate = callback().await?;
@@ -286,15 +278,15 @@ where
 
 #[instrument(skip(callback))]
 async fn on_coin_with_24hr_change<Fut>(
-    cx: UpdateWithCx<Bot, Message>,
+    bot: Bot, msg: Message,
     coin: &str,
     callback: impl FnOnce() -> Fut,
 ) -> Result<()>
 where
     Fut: std::future::Future<Output = Result<(f64, f64)>> + Send,
 {
-    let ref bot = cx.requester;
-    let chat = cx.chat_id();
+    let ref bot = bot;
+    let chat = msg.chat_id();
 
     let (rate, change) = callback().await?;
 
@@ -305,9 +297,9 @@ where
 }
 
 #[instrument(skip(db))]
-async fn on_stats(cx: UpdateWithCx<Bot, Message>, db: Database) -> Result<()> {
-    let user_id = cx.update.from().unwrap().id;
-    let chat_id = cx.update.chat.id;
+async fn on_stats(bot: Bot, msg: Message, db: Database) -> Result<()> {
+    let user_id = msg.from().unwrap().id;
+    let chat_id = msg.chat.id;
     let stats = db.get_statistics(chat_id, user_id).await?;
 
     let mut text = format!("Your statistics for today:\n");
@@ -325,13 +317,13 @@ async fn on_stats(cx: UpdateWithCx<Bot, Message>, db: Database) -> Result<()> {
         }
     }
 
-    cx.answer(text).send().await?;
+    bot.send_message(msg.chat_id(), text).send().await?;
 
     Ok(())
 }
 
 #[instrument]
-pub async fn on_dominance(cx: UpdateWithCx<Bot, Message>, cache_pool: CachePool) -> Result<(), Error> {
+pub async fn on_dominance(bot: Bot, msg: Message, cache_pool: CachePool) -> Result<(), Error> {
     let cache = Cache::new(cache_pool);
     let (cached_btc, cached_eth) = try_join!(cache.get_btc_dominance(), cache.get_eth_dominance())?;
 
@@ -387,96 +379,23 @@ pub async fn on_dominance(cx: UpdateWithCx<Bot, Message>, cache_pool: CachePool)
     };
 
     let text = format!("BTC dominance = {:.2}%\nETH dominance = {:.2}%", btc, eth);
-    cx.answer(text).send().await?;
+    bot.send_message(msg.chat_id(), text).send().await?;
 
     Ok(())
 }
 
-pub async fn repl<N, Cmd>(
-    requestor: Bot,
-    handlers: Arc<impl BotHandlersT<Cmd> + Sync + Send + 'static>,
-    bot_name: N,
-) where
-    N: Into<String> + Send + 'static,
-    Cmd: BotCommand + Send + Sync,
-{
-    let cloned_requestor = requestor.clone();
-    let listener = teloxide::dispatching::update_listeners::polling(
-        cloned_requestor,
-        Some(Duration::from_secs(5)),
-        None,
-        None,
-    );
-
-    let bot_name = bot_name.into();
-    let handlers = handlers.clone();
-
-    Dispatcher::new(requestor)
-        .messages_handler(move |rx: DispatcherHandlerRx<Bot, Message>| {
-            UnboundedReceiverStream::new(rx)
-                .messages()
-                .for_each_concurrent(None, move |(cx, message)| {
-                    let bot_name = bot_name.clone();
-                    let handlers = handlers.clone();
-
-                    async move {
-                        let mut user: Option<sentry::User> = None;
-
-                        if let Some(tg_user) = cx.update.from() {
-                            user = Some(Default::default());
-                            if let Some(ref mut u) = user {
-                                u.username = tg_user.username.clone();
-                                u.id = Some(tg_user.id.to_string());
-                            }
-                        }
-
-                        let result: anyhow::Result<()> = if let Some(text) = message.text() {
-                            let text = text.to_string();
-
-                            if let Ok(cmd) = Cmd::parse(&text, bot_name) {
-                                handlers.commands_handler(cx, cmd).await
-                            } else {
-                                handlers.text_handler(cx, text).await
-                            }
-                        } else {
-                            handlers.messages_handler(cx, message).await
-                        };
-
-                        if let Err(ref e) = result {
-                            sentry::with_scope(
-                                |scope| {
-                                    scope.set_user(user);
-                                },
-                                || {
-                                    sentry::integrations::anyhow::capture_anyhow(e);
-                                },
-                            )
-                        }
-
-                        result.log_on_error().await;
-                    }
-                })
-        })
-        .setup_ctrlc_handler()
-        .dispatch_with_listener(
-            listener,
-            LoggingErrorHandler::with_custom_text("An error from the update listener"),
-        )
-        .await;
-}
-
 #[instrument]
-pub async fn text_handler(cx: UpdateWithCx<Bot, Message>, _text: String, pool: Pool) -> Result<()> {
+pub async fn text_handler(bot: Bot, msg: Message, _text: String, pool: Pool) -> Result<()> {
     let db = Database::new(pool.clone()).await?;
-    let user_id = if let Some(from) = cx.update.from() {
+    let user_id = if let Some(from) = msg.from() {
         from.id
     } else {
-        tracing::debug!("Could not update statistics for message: {:?}", cx);
+        tracing::debug!("Could not update statistics for message: {:?}", msg);
         return Ok(());
     };
-    let chat_id = cx.update.chat.id;
+    let chat_id = msg.chat.id;
 
-    update_users_mapping(&cx.requester, cx.update.from(), pool.clone()).await?;
+    update_users_mapping(&bot, msg.from(), pool.clone()).await?;
 
     db.update_statistics(chat_id, user_id, UpdateKind::TextMessage)
         .await?;
@@ -485,26 +404,26 @@ pub async fn text_handler(cx: UpdateWithCx<Bot, Message>, _text: String, pool: P
 
 #[instrument]
 pub async fn messages_handler(
-    cx: UpdateWithCx<Bot, Message>,
+    bot: Bot, msg: Message,
     message: Message,
     pool: Pool,
 ) -> Result<()> {
-    async fn impl_fn(cx: UpdateWithCx<Bot, Message>, message: Message, pool: Pool) -> Result<()> {
-        let user_id = if let Some(from) = cx.update.from() {
+    async fn impl_fn(bot: Bot, msg: Message, message: Message, pool: Pool) -> Result<()> {
+        let user_id = if let Some(from) = msg.from() {
             from.id
         } else {
             return Ok(());
         };
 
         let db = Database::new(pool.clone()).await?;
-        let chat_id = cx.update.chat.id;
+        let chat_id = msg.chat.id;
 
-        update_users_mapping(&cx.requester, cx.update.from(), pool.clone()).await?;
+        update_users_mapping(&bot, msg.from(), pool.clone()).await?;
 
         if let Some(sticker) = message.sticker() {
             db.update_statistics(chat_id, user_id, UpdateKind::Sticker)
                 .await?;
-            process_sticker(cx, sticker).await?;
+            process_sticker(bot, msg, sticker).await?;
         }
         if let Some(_forwarded_from) = message.forward_from_message_id() {
             db.update_statistics(chat_id, user_id, UpdateKind::ForwardedMeme)
@@ -514,35 +433,11 @@ pub async fn messages_handler(
         Ok(())
     }
 
-    if let Err(e) = impl_fn(cx, message, pool).await {
+    if let Err(e) = impl_fn(bot, msg, message, pool).await {
         sentry::integrations::anyhow::capture_anyhow(&e);
     }
 
     Ok(())
-}
-
-pub trait DispatcherHandler<R> {
-    fn messages(self) -> BoxStream<'static, (UpdateWithCx<R, Message>, Message)>
-    where
-        Self: Stream<Item = UpdateWithCx<R, Message>>,
-        R: Send + 'static;
-}
-
-impl<R, T> DispatcherHandler<R> for T
-where
-    T: Send + 'static,
-{
-    fn messages(self) -> BoxStream<'static, (UpdateWithCx<R, Message>, Message)>
-    where
-        Self: Stream<Item = UpdateWithCx<R, Message>>,
-        R: Send + 'static,
-    {
-        self.map(move |cx| {
-            let message = cx.update.clone();
-            (cx, message)
-        })
-        .boxed()
-    }
 }
 
 #[instrument]
@@ -570,16 +465,16 @@ pub async fn update_users_mapping(_bot: &Bot, user: Option<&User>, pool: Pool) -
 }
 
 #[instrument]
-pub async fn process_sticker(cx: UpdateWithCx<Bot, Message>, sticker: &Sticker) -> Result<()> {
+pub async fn process_sticker(bot: Bot, msg: Message, sticker: &Sticker) -> Result<()> {
     const FORBIDDEN_STICKER_ID: &'static str = "AgADvgADzHD_Ag";
 
     if sticker.file_unique_id.as_str() == FORBIDDEN_STICKER_ID {
-        cx.requester
-            .delete_message(cx.chat_id(), cx.update.id)
+        bot
+            .delete_message(msg.chat_id(), msg.id)
             .send()
             .await?;
 
-        let from = match cx.update.from() {
+        let from = match msg.from() {
             Some(from) => from,
             _ => return Ok(()),
         };
@@ -587,16 +482,16 @@ pub async fn process_sticker(cx: UpdateWithCx<Bot, Message>, sticker: &Sticker) 
         let username = from.username.as_ref().or(Some(&from.first_name)).unwrap();
         let text = format!("@{}, хватит душить котов!", username);
 
-        cx.requester.send_message(cx.chat_id(), text).send().await?;
+        bot.send_message(msg.chat_id(), text).send().await?;
     }
 
     return Ok(());
 }
 
 #[instrument]
-async fn on_usd(cx: UpdateWithCx<Bot, Message>) -> Result<()> {
-    let ref bot = cx.requester;
-    let chat = cx.chat_id();
+async fn on_usd(bot: Bot, msg: Message ) -> Result<()> {
+    let ref bot = bot;
+    let chat = msg.chat_id();
 
     let rate = rates::get_usd_rate().await?;
 
@@ -607,9 +502,9 @@ async fn on_usd(cx: UpdateWithCx<Bot, Message>) -> Result<()> {
 }
 
 #[instrument]
-async fn on_all(cx: UpdateWithCx<Bot, Message>) -> Result<()> {
-    let ref _bot = cx.requester;
-    let ref msg = cx.update;
+async fn on_all(bot: Bot, msg: Message ) -> Result<()> {
+    let ref _bot = bot;
+    let ref msg = msg;
     
     let _user_id = msg.from().unwrap().id;
     let _chat_id = msg.chat.id;
@@ -617,36 +512,15 @@ async fn on_all(cx: UpdateWithCx<Bot, Message>) -> Result<()> {
     Ok(())
 }
 
-#[async_trait]
-pub trait BotHandlersT<Cmd: Send> {
-    async fn commands_handler(&self, cx: UpdateWithCx<Bot, Message>, cmd: Cmd) -> Result<()>;
-    async fn text_handler(&self, cx: UpdateWithCx<Bot, Message>, text: String) -> Result<()>;
-    async fn messages_handler(&self, cx: UpdateWithCx<Bot, Message>, msg: Message) -> Result<()>;
-}
-
-pub struct BotHandlers {
-    db_pool: Pool,
-    cache_pool: CachePool,
-}
-
-impl BotHandlers {
-    pub fn new(db_pool: Pool, cache_pool: CachePool) -> Self {
-        Self {
-            db_pool,
-            cache_pool,
-        }
-    }
-}
-
-#[async_trait]
-impl BotHandlersT<Command> for BotHandlers {
-    async fn commands_handler(&self, cx: UpdateWithCx<Bot, Message>, cmd: Command) -> Result<()> {
-        commands_handler(cx, cmd, self.db_pool.clone(), self.cache_pool.clone()).await
-    }
-    async fn text_handler(&self, cx: UpdateWithCx<Bot, Message>, text: String) -> Result<()> {
-        text_handler(cx, text, self.db_pool.clone()).await
-    }
-    async fn messages_handler(&self, cx: UpdateWithCx<Bot, Message>, msg: Message) -> Result<()> {
-        messages_handler(cx, msg, self.db_pool.clone()).await
-    }
+pub fn get_handler() -> UpdateHandler<anyhow::Error> {
+    let h = Update::filter_message()
+        .branch(
+            dptree::entry()
+            .filter_command::<Command>()
+            .endpoint(|bot: Bot, msg: Message, command: Command, pool: Pool, cache_pool: CachePool| async move {
+                commands_endpoint(bot, msg, command, pool, cache_pool).await?;
+                Ok(())
+            }),
+        );
+    h
 }

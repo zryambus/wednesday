@@ -9,7 +9,7 @@ pub struct Cfg(RwLock<config::Config>);
 impl Cfg {
     pub fn new() -> Result<Self> {
         let settings = config::Config::builder()
-            .add_source((config::File::with_name("config")))
+            .add_source(config::File::with_name("config"))
             .add_source(config::Environment::with_prefix("WEDNESDAY"))
             .build()?;
         Ok(Self(RwLock::new(settings)))

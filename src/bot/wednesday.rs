@@ -1,19 +1,24 @@
 use anyhow::{Result, anyhow};
-use teloxide::{prelude::*, RequestError, types::ChatId};
+use teloxide::{prelude2::*, RequestError, types::ChatId};
 
 pub struct WednesdayBot {
-    cx: UpdateWithCx<Bot, Message>,
+    bot: Bot, 
+    msg: Message,
 }
 
 impl WednesdayBot {
-    pub fn new(cx: UpdateWithCx<Bot, Message>) -> Self {
+    pub fn new(bot: Bot, msg: Message) -> Self {
         Self {
-            cx,
+            bot, msg
         }
     }
 
     fn bot(&self) -> &Bot {
-        &self.cx.requester
+        &self.bot
+    }
+
+    pub fn chat_id(&self) -> i64 {
+        self.msg.chat_id()
     }
 
     pub async fn send_text<C, T>(&self, chat_id: C, text: T) -> Result<()> 
@@ -42,12 +47,5 @@ impl WednesdayBot {
             }
         }
         Ok(())
-    }
-    
-}
-
-impl GetChatId for WednesdayBot {
-    fn chat_id(&self) -> i64 {
-        self.cx.chat_id()
     }
 }
