@@ -1,4 +1,4 @@
-use config;
+use config::{self};
 use anyhow::Result;
 use std::sync::{RwLock, RwLockReadGuard};
 
@@ -8,10 +8,10 @@ pub struct Cfg(RwLock<config::Config>);
 
 impl Cfg {
     pub fn new() -> Result<Self> {
-        let mut settings = config::Config::default();
-        settings
-            .merge(config::File::with_name("config"))?
-            .merge(config::Environment::with_prefix("WEDNESDAY"))?;
+        let settings = config::Config::builder()
+            .add_source((config::File::with_name("config")))
+            .add_source(config::Environment::with_prefix("WEDNESDAY"))
+            .build()?;
         Ok(Self(RwLock::new(settings)))
     }
 
@@ -24,26 +24,26 @@ impl Cfg {
     // }
 
     pub fn bot_name(&self) -> Result<String> {
-        Ok(self.read()?.get_str("bot_name")?)
+        Ok(self.read()?.get_string("bot_name")?)
     }
 
     pub fn token(&self) -> Result<String> {
-        Ok(self.read()?.get_str("token")?)
+        Ok(self.read()?.get_string("token")?)
     }
 
     pub fn sentry_url(&self) -> Result<String> {
-        Ok(self.read()?.get_str("sentry_url")?)
+        Ok(self.read()?.get_string("sentry_url")?)
     }
 
     pub fn coin_market_api_key(&self) -> Result<String> {
-        Ok(self.read()?.get_str("coin_market_api_key")?)
+        Ok(self.read()?.get_string("coin_market_api_key")?)
     }
 
     pub fn db(&self) -> Result<String> {
-        Ok(self.read()?.get_str("db")?)
+        Ok(self.read()?.get_string("db")?)
     }
 
     pub fn cache(&self) -> Result<String> {
-        Ok(self.read()?.get_str("cache")?)
+        Ok(self.read()?.get_string("cache")?)
     }
 }

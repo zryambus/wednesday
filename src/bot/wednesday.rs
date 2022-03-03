@@ -27,7 +27,7 @@ impl WednesdayBot {
                     RequestError::RetryAfter(timeout) => {
                         tokio::time::sleep(std::time::Duration::from_secs(timeout as u64)).await;
                     },
-                    RequestError::NetworkError(error) => {
+                    RequestError::Network(error) => {
                         tracing::debug!("Got network error while sending message: {}", error);
                         tokio::time::sleep(std::time::Duration::from_secs(10)).await;
                     },

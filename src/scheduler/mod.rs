@@ -87,7 +87,7 @@ impl Scheduler {
         for chat in chats {
             if let Err(e) = bot.send_message(chat, &url).send().await {
                 match e {
-                    RequestError::ApiError { ref kind, .. } => match kind {
+                    RequestError::Api(ref kind) => match kind {
                         ApiError::BotBlocked => {
                             log::warn!("Chat {} blocked the bot. Removing from active chats", chat);
                             db.remove(chat).await?;
