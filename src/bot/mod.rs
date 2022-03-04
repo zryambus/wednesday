@@ -5,7 +5,6 @@ use crate::rates;
 use anyhow::{Result, Error, anyhow};
 use futures::{try_join};
 use serde::Deserialize;
-use teloxide::dispatching2::UpdateHandler;
 use teloxide::{
     prelude2::*, types::{Sticker, User, Update},
     utils::command::BotCommand
@@ -16,7 +15,7 @@ mod wednesday;
 
 use wednesday::WednesdayBot;
 
-#[derive(BotCommand, Debug)]
+#[derive(BotCommand, Clone, Debug)]
 #[command(rename = "lowercase", description = "These commands are supported:")]
 pub enum Command {
     #[command(description = "display this text.")]
@@ -63,7 +62,7 @@ pub enum Command {
     All
 }
 
-async fn commands_endpoint(bot: Bot, msg: Message, command: Command, pool: Pool, cache_pool: CachePool) -> Result<()> {
+pub async fn commands_endpoint(bot: Bot, msg: Message, command: Command, pool: Pool, cache_pool: CachePool) -> Result<()> {
     let db = Database::new(pool.clone()).await?;
 
     update_users_mapping(&bot, msg.from(), pool.clone()).await?;
@@ -512,15 +511,16 @@ async fn on_all(bot: Bot, msg: Message ) -> Result<()> {
     Ok(())
 }
 
-pub fn get_handler() -> UpdateHandler<anyhow::Error> {
+pub fn get_handler() -> Handler<'static, DependencyMap, Result<()>> {
     let h = Update::filter_message()
         .branch(
             dptree::entry()
             .filter_command::<Command>()
-            .endpoint(|bot: Bot, msg: Message, command: Command, pool: Pool, cache_pool: CachePool| async move {
-                commands_endpoint(bot, msg, command, pool, cache_pool).await?;
-                Ok(())
-            }),
+            .endpoint(commands_endpoint)
+        )
+        .branch(
+            dptree::entry()
+            .endpoint(text_handler)
         );
     h
 }

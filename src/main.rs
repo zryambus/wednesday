@@ -47,7 +47,14 @@ async fn try_main(cfg: config::Cfg) -> Result<()> {
     let _scheduler = scheduler::Scheduler::new(bot.clone(), pool.clone(), cache_pool.clone());
 
     Dispatcher::builder(bot, crate::bot::get_handler())
-        .dependencies(dptree::deps![pool.clone(), cache_pool.clone()])
+        .dependencies(dptree::deps![pool.clone(), cache_pool.clone(), cfg.bot_name()?])
+        .default_handler(|upd| async move {
+            tracing::warn!("Unhandled update: {:?}", upd);
+        })
+        // If the dispatcher fails for some reason, execute this handler.
+        .error_handler(LoggingErrorHandler::with_custom_text(
+            "An error has occurred in the dispatcher",
+        ))
         .build()
         .setup_ctrlc_handler()
         .dispatch()
