@@ -53,12 +53,9 @@ impl Scheduler {
             Self::async_task(|| Self::check_rate(b.clone(), p.clone(), provider.clone()))
         });
 
-        let b = bot.clone();
-        let p = pool.clone();
-        let cp = cache_pool.clone();
         scheduler.every(2.minute()).run(move || {
-            let provider = Arc::new(ZEECheckProvider::new(cp.clone()));
-            Self::async_task(|| Self::check_rate(b.clone(), p.clone(), provider.clone()))
+            let provider = Arc::new(ZEECheckProvider::new(cache_pool.clone()));
+            Self::async_task(|| Self::check_rate(bot.clone(), pool.clone(), provider.clone()))
         });
 
         let _schedule_handle = scheduler.watch_thread(Duration::from_secs(1));
@@ -133,7 +130,7 @@ impl Scheduler {
 
         let mut last_rate_check: Option<RateCheck> = None;
 
-        if prev_rates.len() == 0 {
+        if prev_rates.is_empty() {
             let rate = RateCheck {
                 grow: true,
                 rate: current_rate,
@@ -142,7 +139,7 @@ impl Scheduler {
             return Ok(());
         }
 
-        if prev_rates.len() > 0 {
+        if !prev_rates.is_empty() {
             let prev = (prev_rates[0].rate / provider.step()) as i64;
             let curr = (current_rate / provider.step()) as i64;
 
@@ -166,7 +163,7 @@ impl Scheduler {
 
         let last_rate_check = last_rate_check.clone().unwrap();
 
-        if last_rate_check.grow == !prev_rates[0].grow {
+        if last_rate_check.grow != prev_rates[0].grow {
             return Ok(());
         }
 

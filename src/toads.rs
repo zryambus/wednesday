@@ -1,6 +1,6 @@
 use rand::seq::SliceRandom;
 
-const TOADS: &'static [&'static str] = &[
+const TOADS: &[&str] = &[
     "9K4-jllrPrE",
     "bbat6cvgEJ8",
     "Oct2xKMGOno",
@@ -52,7 +52,7 @@ const TOADS: &'static [&'static str] = &[
     "zHpFuOlPrlQ",
     "Xf_wuAQ-t44",
     "frNFBv2QIoE",
-    "PAnKl7862qc"
+    "PAnKl7862qc",
 ];
 
 pub fn get_toad() -> String {

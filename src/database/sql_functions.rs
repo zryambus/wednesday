@@ -1,5 +1,5 @@
-use sea_query::Iden;
 use sea_query::tests_cfg::FmtWrite;
+use sea_query::Iden;
 
 pub struct Exists;
 

@@ -1,5 +1,5 @@
-use config::{self};
 use anyhow::Result;
+use config::{self};
 use std::sync::{RwLock, RwLockReadGuard};
 
 use crate::errors::MyError;

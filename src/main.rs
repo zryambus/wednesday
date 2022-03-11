@@ -11,9 +11,9 @@ use crate::database::Database;
 
 use anyhow::Result;
 use bb8_postgres::tokio_postgres::NoTls;
-use tracing_subscriber::{prelude::*, registry::Registry, fmt};
-use tracing::level_filters::LevelFilter;
 use teloxide::prelude2::*;
+use tracing::level_filters::LevelFilter;
+use tracing_subscriber::{fmt, prelude::*, registry::Registry};
 
 async fn try_main(cfg: config::Cfg) -> Result<()> {
     let db_path = cfg.db()?;
@@ -47,7 +47,11 @@ async fn try_main(cfg: config::Cfg) -> Result<()> {
     let _scheduler = scheduler::Scheduler::new(bot.clone(), pool.clone(), cache_pool.clone());
 
     Dispatcher::builder(bot, crate::bot::get_handler())
-        .dependencies(dptree::deps![pool.clone(), cache_pool.clone(), cfg.bot_name()?])
+        .dependencies(dptree::deps![
+            pool.clone(),
+            cache_pool.clone(),
+            cfg.bot_name()?
+        ])
         .default_handler(|upd| async move {
             tracing::warn!("Unhandled update: {:?}", upd);
         })

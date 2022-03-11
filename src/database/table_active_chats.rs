@@ -1,16 +1,16 @@
-use sea_query::{Iden, Table, ColumnDef, PostgresQueryBuilder, Query, Expr, Func};
 use crate::database::sql_functions::Exists;
+use sea_query::{ColumnDef, Expr, Func, Iden, PostgresQueryBuilder, Query, Table};
 
 #[derive(Iden)]
 pub enum ActiveChats {
     Table,
-    ChatId
+    ChatId,
 }
 
 #[derive(Iden)]
 pub enum ActiveCryptoChats {
     Table,
-    ChatId
+    ChatId,
 }
 
 pub trait ActiveT {
@@ -38,18 +38,27 @@ impl ActiveT for ActiveCryptoChats {
     }
 }
 
-trait CreateTableForActiveChats<T> where T: ActiveT + Iden + 'static {
+trait CreateTableForActiveChats<T>
+where
+    T: ActiveT + Iden + 'static,
+{
     fn build_create_table_query_impl() -> String {
         Table::create()
             .if_not_exists()
             .table(T::table())
-            .col(ColumnDef::new(T::field()).big_integer().unique_key().primary_key().not_null())
+            .col(
+                ColumnDef::new(T::field())
+                    .big_integer()
+                    .unique_key()
+                    .primary_key()
+                    .not_null(),
+            )
             .build(PostgresQueryBuilder)
     }
 }
 
-impl CreateTableForActiveChats<Self> for ActiveChats{}
-impl CreateTableForActiveChats<Self> for ActiveCryptoChats{}
+impl CreateTableForActiveChats<Self> for ActiveChats {}
+impl CreateTableForActiveChats<Self> for ActiveCryptoChats {}
 
 impl super::db::CreateTable for ActiveChats {
     fn build_create_table_query() -> String {
@@ -80,12 +89,8 @@ pub trait ActiveChatsActions<T: ActiveT + Iden + 'static> {
     fn build_add_chat_query(chat_id: i64) -> String {
         Query::insert()
             .into_table(T::table())
-            .columns(vec![
-                T::field()
-            ])
-            .values(vec![
-                chat_id.into()
-            ])
+            .columns(vec![T::field()])
+            .values(vec![chat_id.into()])
             .unwrap()
             .to_string(PostgresQueryBuilder)
     }

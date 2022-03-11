@@ -2,12 +2,13 @@ use crate::cache::{Cache, CachePool};
 use crate::database::{Database, Pool, UpdateKind};
 use crate::rates;
 
-use anyhow::{Result, Error, anyhow};
-use futures::{try_join};
+use anyhow::{anyhow, Error, Result};
+use futures::try_join;
 use serde::Deserialize;
 use teloxide::{
-    prelude2::*, types::{Sticker, User, Update},
-    utils::command::BotCommand
+    prelude2::*,
+    types::{Sticker, Update, User},
+    utils::command::BotCommand,
 };
 use tracing::instrument;
 
@@ -35,34 +36,40 @@ pub enum Command {
     #[command(description = "show rates of BTC, ETH and LTC to USD")]
     Rates,
     #[command(description = "show rate of BTC to USD")]
-    BTC,
+    Btc,
     #[command(description = "show rate of ETH to USD")]
-    ETH,
+    Eth,
     #[command(description = "show rate of LTC to USD")]
-    LTC,
+    Ltc,
     #[command(description = "show rate of ETC to USD")]
-    ETC,
+    Etc,
     #[command(description = "show rate of SOL to USD")]
-    SOL,
+    Sol,
     #[command(description = "show rate of ADA to USD")]
-    ADA,
+    Ada,
     #[command(description = "show rate of ZEE to USD")]
-    ZEE,
+    Zee,
     #[command(description = "show rate of BNB to USD")]
-    BNB,
+    Bnb,
     #[command(description = "show rate of LUNA to USD")]
-    LUNA,
+    Luna,
     #[command(description = "show statistics")]
     Stats,
     #[command(description = "show BTC and ETH dominance")]
     Dominance,
     #[command(description = "show USD rate")]
-    USD,
+    Usd,
     #[command(description = "cast all in members in chat")]
-    All
+    All,
 }
 
-pub async fn commands_endpoint(bot: Bot, msg: Message, command: Command, pool: Pool, cache_pool: CachePool) -> Result<()> {
+pub async fn commands_endpoint(
+    bot: Bot,
+    msg: Message,
+    command: Command,
+    pool: Pool,
+    cache_pool: CachePool,
+) -> Result<()> {
     let db = Database::new(pool.clone()).await?;
 
     update_users_mapping(&bot, msg.from(), pool.clone()).await?;
@@ -86,53 +93,32 @@ pub async fn commands_endpoint(bot: Bot, msg: Message, command: Command, pool: P
         Command::NotToday => on_crypto_stop(bot, msg, db).await?,
         Command::Stonks => on_crypto_status(bot, msg, db).await?,
         Command::Rates => on_rates(bot, msg).await?,
-        Command::BTC => {
-            on_coin_with_24hr_change(bot, msg, "BTC", &rates::get_btc_rate_with_24hr_change)
-                .await?
+        Command::Btc => {
+            on_coin_with_24hr_change(bot, msg, "BTC", &rates::get_btc_rate_with_24hr_change).await?
         }
-        Command::ETH => {
-            on_coin_with_24hr_change(bot, msg, "ETH", &rates::get_eth_rate_with_24hr_change)
-                .await?
+        Command::Eth => {
+            on_coin_with_24hr_change(bot, msg, "ETH", &rates::get_eth_rate_with_24hr_change).await?
         }
-        Command::LTC => {
-            on_coin(bot, msg, "LTC", &rates::get_ltc_rate)
-                .await?
+        Command::Ltc => on_coin(bot, msg, "LTC", &rates::get_ltc_rate).await?,
+        Command::Etc => on_coin(bot, msg, "ETC", &rates::get_etc_rate).await?,
+        Command::Sol => {
+            on_coin_with_24hr_change(bot, msg, "SOL", &rates::get_sol_rate_with_24hr_change).await?
         }
-        Command::ETC => {
-            on_coin(bot, msg, "ETC", &rates::get_etc_rate)
-                .await?
+        Command::Ada => on_coin(bot, msg, "ADA", &rates::get_ada_rate).await?,
+        Command::Zee => {
+            on_coin_with_24hr_change(bot, msg, "ZEE", &rates::get_zee_rate_with_24hr_change).await?
         }
-        Command::SOL => {
-            on_coin_with_24hr_change(bot, msg, "SOL", &rates::get_sol_rate_with_24hr_change)
-                .await?
+        Command::Bnb => {
+            on_coin_with_24hr_change(bot, msg, "BNB", &rates::get_bnb_rate_with_24hr_change).await?
         }
-        Command::ADA => {
-            on_coin(bot, msg, "ADA", &rates::get_ada_rate)
-                .await?
-        }
-        Command::ZEE => {
-            on_coin_with_24hr_change(bot, msg, "ZEE", &rates::get_zee_rate_with_24hr_change)
-                .await?
-        }
-        Command::BNB => {
-            on_coin_with_24hr_change(bot, msg, "BNB", &rates::get_bnb_rate_with_24hr_change)
-                .await?
-        }
-        Command::LUNA => {
+        Command::Luna => {
             on_coin_with_24hr_change(bot, msg, "LUNA", &rates::get_luna_rate_with_24hr_change)
                 .await?
         }
         Command::Stats => on_stats(bot, msg, db).await?,
-        Command::Dominance => {
-            on_dominance(bot, msg, cache_pool.clone())
-                .await?
-        },
-        Command::USD => {
-            on_usd(bot, msg).await?
-        },
-        Command::All => {
-            on_all(bot, msg).await?
-        },
+        Command::Dominance => on_dominance(bot, msg, cache_pool.clone()).await?,
+        Command::Usd => on_usd(bot, msg).await?,
+        Command::All => on_all(bot, msg).await?,
     };
 
     Ok(())
@@ -142,13 +128,11 @@ pub async fn commands_endpoint(bot: Bot, msg: Message, command: Command, pool: P
 pub async fn on_start(bot: Bot, msg: Message, db: Database) -> Result<()> {
     if !db.is_active(msg.chat_id()).await? {
         db.add(msg.chat_id()).await?;
-        bot
-            .send_message(msg.chat_id(), "✅ Chat was added to list")
+        bot.send_message(msg.chat_id(), "✅ Chat was added to list")
             .send()
             .await?;
     } else {
-        bot
-            .send_message(msg.chat_id(), "⚠ Current chat is already in the list")
+        bot.send_message(msg.chat_id(), "⚠ Current chat is already in the list")
             .send()
             .await?;
     }
@@ -160,13 +144,11 @@ pub async fn on_start(bot: Bot, msg: Message, db: Database) -> Result<()> {
 pub async fn on_stop(bot: Bot, msg: Message, db: Database) -> Result<()> {
     if db.is_active(msg.chat_id()).await? {
         db.remove(msg.chat_id()).await?;
-        bot
-            .send_message(msg.chat_id(), "✅ Chat was removed from list")
+        bot.send_message(msg.chat_id(), "✅ Chat was removed from list")
             .send()
             .await?;
     } else {
-        bot
-            .send_message(msg.chat_id(), "⚠ Current chat is not in the list")
+        bot.send_message(msg.chat_id(), "⚠ Current chat is not in the list")
             .send()
             .await?;
     }
@@ -192,15 +174,16 @@ pub async fn on_status(bot: Bot, msg: Message, db: Database) -> Result<()> {
 pub async fn on_crypto_start(bot: Bot, msg: Message, db: Database) -> Result<()> {
     if !db.is_active_crypto(msg.chat_id()).await? {
         db.add_crypto(msg.chat_id()).await?;
-        bot
-            .send_message(msg.chat_id(), "✅ Chat was added to crypto list")
+        bot.send_message(msg.chat_id(), "✅ Chat was added to crypto list")
             .send()
             .await?;
     } else {
-        bot
-            .send_message(msg.chat_id(), "⚠ Current chat is already in the crypto list")
-            .send()
-            .await?;
+        bot.send_message(
+            msg.chat_id(),
+            "⚠ Current chat is already in the crypto list",
+        )
+        .send()
+        .await?;
     }
 
     Ok(())
@@ -210,13 +193,11 @@ pub async fn on_crypto_start(bot: Bot, msg: Message, db: Database) -> Result<()>
 pub async fn on_crypto_stop(bot: Bot, msg: Message, db: Database) -> Result<()> {
     if db.is_active_crypto(msg.chat_id()).await? {
         db.remove_crypto(msg.chat_id()).await?;
-        bot
-            .send_message(msg.chat_id(), "✅ Chat was removed from crypto list")
+        bot.send_message(msg.chat_id(), "✅ Chat was removed from crypto list")
             .send()
             .await?;
     } else {
-        bot
-            .send_message(msg.chat_id(), "⚠ Current chat is not in the crypto list")
+        bot.send_message(msg.chat_id(), "⚠ Current chat is not in the crypto list")
             .send()
             .await?;
     }
@@ -239,8 +220,7 @@ pub async fn on_crypto_status(bot: Bot, msg: Message, db: Database) -> Result<()
 }
 
 #[instrument]
-pub async fn on_rates(bot: Bot, msg: Message ) -> Result<()> {
-    let ref bot = bot;
+pub async fn on_rates(bot: Bot, msg: Message) -> Result<()> {
     let chat = msg.chat_id();
 
     let (btc, eth, zee) = try_join!(
@@ -257,7 +237,8 @@ pub async fn on_rates(bot: Bot, msg: Message ) -> Result<()> {
 
 #[instrument(skip(callback), fields(error))]
 async fn on_coin<Fut>(
-    bot: Bot, msg: Message,
+    bot: Bot,
+    msg: Message,
     coin: &str,
     callback: impl FnOnce() -> Fut,
 ) -> Result<()>
@@ -277,14 +258,14 @@ where
 
 #[instrument(skip(callback))]
 async fn on_coin_with_24hr_change<Fut>(
-    bot: Bot, msg: Message,
+    bot: Bot,
+    msg: Message,
     coin: &str,
     callback: impl FnOnce() -> Fut,
 ) -> Result<()>
 where
     Fut: std::future::Future<Output = Result<(f64, f64)>> + Send,
 {
-    let ref bot = bot;
     let chat = msg.chat_id();
 
     let (rate, change) = callback().await?;
@@ -301,7 +282,7 @@ async fn on_stats(bot: Bot, msg: Message, db: Database) -> Result<()> {
     let chat_id = msg.chat.id;
     let stats = db.get_statistics(chat_id, user_id).await?;
 
-    let mut text = format!("Your statistics for today:\n");
+    let mut text = String::from("Your statistics for today:\n");
     for (kind, count) in stats {
         match kind {
             UpdateKind::TextMessage => {
@@ -360,7 +341,7 @@ pub async fn on_dominance(bot: Bot, msg: Message, cache_pool: CachePool) -> Resu
             tracing::error!("Error: {}", err);
             return Err(anyhow!(err));
         };
-        
+
         let data: Data = serde_json::from_value(response.data)?;
 
         try_join!(
@@ -402,11 +383,7 @@ pub async fn text_handler(bot: Bot, msg: Message, _text: String, pool: Pool) -> 
 }
 
 #[instrument]
-pub async fn messages_handler(
-    bot: Bot, msg: Message,
-    message: Message,
-    pool: Pool,
-) -> Result<()> {
+pub async fn messages_handler(bot: Bot, msg: Message, message: Message, pool: Pool) -> Result<()> {
     async fn impl_fn(bot: Bot, msg: Message, message: Message, pool: Pool) -> Result<()> {
         let user_id = if let Some(from) = msg.from() {
             from.id
@@ -451,13 +428,13 @@ pub async fn update_users_mapping(_bot: &Bot, user: Option<&User>, pool: Pool) -
     if let Some(ref username) = user.username {
         mapping.push((user.id, username.clone()));
     } else {
-        let ref first_name = user.first_name;
+        let first_name = &user.first_name;
         let username = if let Some(ref last_name) = user.last_name {
             format!("{} {}", first_name, last_name)
         } else {
             format!("{} {}", first_name, user.id)
         };
-        mapping.push((user.id, username.clone()));
+        mapping.push((user.id, username));
     }
     db.update_mapping(mapping).await?;
     Ok(())
@@ -465,13 +442,10 @@ pub async fn update_users_mapping(_bot: &Bot, user: Option<&User>, pool: Pool) -
 
 #[instrument]
 pub async fn process_sticker(bot: Bot, msg: Message, sticker: &Sticker) -> Result<()> {
-    const FORBIDDEN_STICKER_ID: &'static str = "AgADvgADzHD_Ag";
+    const FORBIDDEN_STICKER_ID: &str = "AgADvgADzHD_Ag";
 
     if sticker.file_unique_id.as_str() == FORBIDDEN_STICKER_ID {
-        bot
-            .delete_message(msg.chat_id(), msg.id)
-            .send()
-            .await?;
+        bot.delete_message(msg.chat_id(), msg.id).send().await?;
 
         let from = match msg.from() {
             Some(from) => from,
@@ -484,12 +458,11 @@ pub async fn process_sticker(bot: Bot, msg: Message, sticker: &Sticker) -> Resul
         bot.send_message(msg.chat_id(), text).send().await?;
     }
 
-    return Ok(());
+    Ok(())
 }
 
 #[instrument]
-async fn on_usd(bot: Bot, msg: Message ) -> Result<()> {
-    let ref bot = bot;
+async fn on_usd(bot: Bot, msg: Message) -> Result<()> {
     let chat = msg.chat_id();
 
     let rate = rates::get_usd_rate().await?;
@@ -501,10 +474,9 @@ async fn on_usd(bot: Bot, msg: Message ) -> Result<()> {
 }
 
 #[instrument]
-async fn on_all(bot: Bot, msg: Message ) -> Result<()> {
-    let ref _bot = bot;
-    let ref msg = msg;
-    
+async fn on_all(bot: Bot, msg: Message) -> Result<()> {
+    let _bot = &bot;
+
     let _user_id = msg.from().unwrap().id;
     let _chat_id = msg.chat.id;
 
@@ -515,12 +487,9 @@ pub fn get_handler() -> Handler<'static, DependencyMap, Result<()>> {
     let h = Update::filter_message()
         .branch(
             dptree::entry()
-            .filter_command::<Command>()
-            .endpoint(commands_endpoint)
+                .filter_command::<Command>()
+                .endpoint(commands_endpoint),
         )
-        .branch(
-            dptree::entry()
-            .endpoint(text_handler)
-        );
+        .branch(dptree::entry().endpoint(text_handler));
     h
 }

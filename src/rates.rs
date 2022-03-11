@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Result};
-use reqwest;
 use std::collections::HashMap;
 use tracing::instrument;
 
@@ -15,7 +14,12 @@ async fn request_rate_from_binance(coin: &str) -> Result<f64> {
     while attempt < 3 {
         let response = reqwest::get(&url).await;
         let response = if let Err(e) = response {
-            tracing::debug!("Error while trying to get data from {}: {}\nAttempt {}", url, e, attempt + 1);
+            tracing::debug!(
+                "Error while trying to get data from {}: {}\nAttempt {}",
+                url,
+                e,
+                attempt + 1
+            );
             if e.is_connect() {
                 attempt += 1;
                 continue;
@@ -25,9 +29,7 @@ async fn request_rate_from_binance(coin: &str) -> Result<f64> {
             response.unwrap()
         };
 
-        let data = response
-            .json::<HashMap<String, String>>()
-            .await?;
+        let data = response.json::<HashMap<String, String>>().await?;
 
         let rate = data["price"].parse::<f64>()?;
         return Ok(rate);
@@ -77,7 +79,10 @@ async fn request_rate_from_coingecko_with_24hr_change(coin: &str) -> Result<(f64
 
 #[instrument]
 async fn request_non_coin_rate(from: &str, to: &str) -> Result<f64> {
-    let url = format!("https://cdn.jsdelivr.net/gh/fawazahmed0/currency-api@1/latest/currencies/{}/{}.json", from, to);
+    let url = format!(
+        "https://cdn.jsdelivr.net/gh/fawazahmed0/currency-api@1/latest/currencies/{}/{}.json",
+        from, to
+    );
     let data: serde_json::Value = reqwest::get(url).await?.json().await?;
     let price = data[to]
         .as_f64()

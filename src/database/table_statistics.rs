@@ -32,9 +32,9 @@ impl TryFrom<i32> for UpdateKind {
     }
 }
 
-impl Into<sea_query::Value> for UpdateKind {
-    fn into(self) -> sea_query::Value {
-        sea_query::Value::Int(Some(self as i32))
+impl From<UpdateKind> for sea_query::Value {
+    fn from(item: UpdateKind) -> sea_query::Value {
+        sea_query::Value::Int(Some(item as i32))
     }
 }
 

@@ -88,8 +88,7 @@ impl Cache {
     }
 
     async fn get_last_rate(&self, key: &'static str) -> anyhow::Result<Vec<RateCheck>> {
-        let value: Option<Vec<RateCheck>> = self.connection().await?
-            .lrange(key, 0, -1).await?;
+        let value: Option<Vec<RateCheck>> = self.connection().await?.lrange(key, 0, -1).await?;
 
         let value = match value {
             Some(v) => v,
