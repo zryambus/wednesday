@@ -53,7 +53,7 @@ async fn try_main(cfg: config::Cfg) -> Result<()> {
             pool.clone(),
             cache_pool.clone(),
             cfg.bot_name()?,
-            Arc::new(RwLock::new(Gauss::new(15., 3.)))
+            Arc::new(RwLock::new(Gauss::new(17., 4.)))
         ])
         .default_handler(|upd| async move {
             tracing::warn!("Unhandled update: {:?}", upd);
@@ -118,7 +118,7 @@ mod tests {
 
     #[test]
     fn gauss_test() {
-        let mut gauss = Gauss::new(15., 3.);
+        let mut gauss = Gauss::new(17., 4.);
         for _ in 0..12 {
             println!("{}", gauss.next());
         }
