@@ -1,3 +1,5 @@
+use std::sync::{Arc, RwLock};
+
 use crate::cache::{Cache, CachePool};
 use crate::database::{Database, Pool, UpdateKind};
 use crate::rates;
@@ -5,6 +7,8 @@ use crate::rates;
 use anyhow::{anyhow, Error, Result};
 use futures::try_join;
 use serde::Deserialize;
+use teloxide::dispatching2::UpdateFilterExt;
+use teloxide::types::{InlineQueryResultArticle, InputMessageContent, InputMessageContentText};
 use teloxide::{
     prelude2::*,
     types::{Sticker, Update, User},
@@ -235,7 +239,7 @@ pub async fn on_rates(bot: Bot, msg: Message) -> Result<()> {
     Ok(())
 }
 
-#[instrument(skip(callback), fields(error))]
+#[instrument(skip(callback))]
 async fn on_coin<Fut>(
     bot: Bot,
     msg: Message,
@@ -416,7 +420,6 @@ pub async fn messages_handler(bot: Bot, msg: Message, message: Message, pool: Po
     Ok(())
 }
 
-#[instrument]
 pub async fn update_users_mapping(_bot: &Bot, user: Option<&User>, pool: Pool) -> Result<()> {
     let user = match user {
         Some(u) => u,
@@ -483,13 +486,109 @@ async fn on_all(bot: Bot, msg: Message) -> Result<()> {
     Ok(())
 }
 
+#[derive(Clone)]
+pub struct Gauss {
+    mean: f64,
+    dev: f64,
+
+    ready: bool,
+    second: f64,
+}
+
+impl Gauss {
+    pub fn new(mean: f64, dev: f64) -> Self {
+        Self {
+            mean,
+            dev,
+            ready: false,
+            second: 0.,
+        }
+    }
+
+    pub fn next(&mut self) -> f64 {
+        if self.ready {
+            self.ready = false;
+            self.second * self.dev + self.mean
+        } else {
+            let mut u: f64;
+            let mut v: f64;
+            let mut s: f64;
+
+            loop {
+                u = 2.0 * alea::f64() - 1.0;
+                v = 2.0 * alea::f64() - 1.0;
+                s = u * u + v * v;
+
+                if !(s > 1. || s == 0.) {
+                    break;
+                }
+            }
+
+            let r = (-2. * s.log2() / s).sqrt();
+            self.second = r * u;
+            self.ready = true;
+
+            r * v * self.dev + self.mean
+        }
+    }
+}
+
 pub fn get_handler() -> Handler<'static, DependencyMap, Result<()>> {
+    async fn dummy() -> Result<()> {
+        Ok(())
+    }
+
+    async fn inline_endpoint(bot: Bot, query: InlineQuery, g: Arc<RwLock<Gauss>>) -> Result<()> {
+        let cocksize = g.write().map_err(|e| anyhow!("{}", e))?.next() as i32;
+        let emoji = match cocksize {
+            0..=3 => "продуло 🥶",
+            4..=9 => "😒",
+            10..=13 => "😐",
+            14..=18 => "🤗",
+            19..=25 => "😎",
+            26..=40 => "👬",
+            _ => "😮"
+        };
+        let response = InlineQueryResultArticle::new(
+            format!("{}", query.from.id),
+            "Share your cock size",
+            InputMessageContent::Text(InputMessageContentText::new(format!(
+                "My cock size is {}cm {}",
+                cocksize,
+                emoji
+            ))),
+        );
+        let mut answer = bot.answer_inline_query(query.id, vec![response.into()]);
+        answer.cache_time = Some(60); // is secs
+        answer.is_personal = Some(true); // cached for specific user
+        answer.send().await?;
+
+        Ok(())
+    }
+
     let h = Update::filter_message()
+        .branch(
+            // set sentry user middleware
+            dptree::filter(|msg: Message| {
+                let username = msg.chat.username().map(ToOwned::to_owned);
+                sentry::configure_scope(|scope| {
+                    scope.set_user(Some(sentry::User {
+                        username,
+                        ..Default::default()
+                    }))
+                });
+                return false;
+            })
+            .endpoint(dummy),
+        )
         .branch(
             dptree::entry()
                 .filter_command::<Command>()
                 .endpoint(commands_endpoint),
         )
         .branch(dptree::entry().endpoint(text_handler));
-    h
+
+    let i = Update::filter_inline_query().endpoint(inline_endpoint);
+
+    dptree::entry().branch(h).branch(i)
 }

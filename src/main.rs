@@ -7,7 +7,9 @@ mod rates;
 mod scheduler;
 mod toads;
 
-use crate::database::Database;
+use std::sync::{Arc, RwLock};
+
+use crate::{bot::Gauss, database::Database};
 
 use anyhow::Result;
 use bb8_postgres::tokio_postgres::NoTls;
@@ -50,7 +52,8 @@ async fn try_main(cfg: config::Cfg) -> Result<()> {
         .dependencies(dptree::deps![
             pool.clone(),
             cache_pool.clone(),
-            cfg.bot_name()?
+            cfg.bot_name()?,
+            Arc::new(RwLock::new(Gauss::new(15., 3.)))
         ])
         .default_handler(|upd| async move {
             tracing::warn!("Unhandled update: {:?}", upd);
@@ -106,5 +109,18 @@ async fn main() {
             .skip(1)
             .for_each(|cause| eprintln!("because: {}", cause));
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::bot::Gauss;
+
+    #[test]
+    fn gauss_test() {
+        let mut gauss = Gauss::new(15., 3.);
+        for _ in 0..12 {
+            println!("{}", gauss.next());
+        }
     }
 }
