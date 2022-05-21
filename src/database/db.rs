@@ -156,7 +156,7 @@ impl Database {
     pub async fn update_statistics(
         &self,
         chat_id: i64,
-        user_id: i64,
+        user_id: u64,
         kind: UpdateKind,
     ) -> Result<()> {
         let today = chrono::Utc::today()
@@ -185,7 +185,7 @@ impl Database {
     pub async fn get_statistics(
         &self,
         chat_id: i64,
-        user_id: i64,
+        user_id: u64,
     ) -> Result<BTreeMap<UpdateKind, usize>> {
         let mut result = BTreeMap::new();
         result.insert(UpdateKind::TextMessage, 0);
@@ -228,7 +228,7 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self))]
-    pub async fn update_mapping(&self, mapping: Vec<(i64, String)>) -> Result<()> {
+    pub async fn update_mapping(&self, mapping: Vec<(u64, String)>) -> Result<()> {
         for (user_id, username) in mapping {
             let query = Mapping::build_set_query(user_id, username)?;
             self.connection()

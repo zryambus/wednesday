@@ -6,7 +6,7 @@ use crate::database::{Database, Pool};
 use clokwerk::{Interval::*, ScheduleHandle, TimeUnits};
 use std::sync::Arc;
 use std::time::Duration;
-use teloxide::{prelude2::*, ApiError, RequestError};
+use teloxide::{prelude::*, ApiError, RequestError, types::ChatId};
 
 use rate_check_providers::{
     BTCCheckProvider, ETHCheckProvider, RateCheckProvider, ZEECheckProvider,
@@ -82,7 +82,7 @@ impl Scheduler {
         let url = crate::toads::get_toad();
 
         for chat in chats {
-            if let Err(e) = bot.send_message(chat, &url).send().await {
+            if let Err(e) = bot.send_message(ChatId(chat), &url).send().await {
                 match e {
                     RequestError::Api(ref kind) => match kind {
                         ApiError::BotBlocked => {
@@ -112,7 +112,7 @@ impl Scheduler {
         };
 
         for chat in chats {
-            bot.send_message(chat, &text).send().await?;
+            bot.send_message(ChatId(chat), &text).send().await?;
         }
         Ok(())
     }
@@ -175,7 +175,7 @@ impl Scheduler {
                 last_rate_check.rate,
                 if last_rate_check.grow { "📈" } else { "📉" }
             );
-            bot.send_message(chat, text).send().await?;
+            bot.send_message(ChatId(chat), text).send().await?;
         }
 
         Ok(())

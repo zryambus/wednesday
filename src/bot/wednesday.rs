@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use teloxide::{prelude2::*, types::ChatId, RequestError};
+use teloxide::{prelude::*, types::ChatId, RequestError};
 
 pub struct WednesdayBot {
     bot: Bot,
@@ -15,8 +15,8 @@ impl WednesdayBot {
         &self.bot
     }
 
-    pub fn chat_id(&self) -> i64 {
-        self.msg.chat_id()
+    pub fn chat_id(&self) -> ChatId {
+        self.msg.chat.id
     }
 
     pub async fn send_text<C, T>(&self, chat_id: C, text: T) -> Result<()>
@@ -27,14 +27,14 @@ impl WednesdayBot {
         loop {
             let result = self
                 .bot()
-                .send_message(chat_id.clone(), text.clone())
+                .send_message(chat_id.clone().into(), text.clone())
                 .send()
                 .await;
             if let Err(e) = result {
                 sentry::capture_error(&e);
                 match e {
                     RequestError::RetryAfter(timeout) => {
-                        tokio::time::sleep(std::time::Duration::from_secs(timeout as u64)).await;
+                        tokio::time::sleep(std::time::Duration::from_secs(timeout.as_secs())).await;
                     }
                     RequestError::Network(error) => {
                         tracing::debug!("Got network error while sending message: {}", error);
@@ -42,7 +42,7 @@ impl WednesdayBot {
                     }
                     RequestError::MigrateToChatId(new_chat_id) => {
                         self.bot()
-                            .send_message(new_chat_id, text.clone())
+                            .send_message(ChatId(new_chat_id), text.clone())
                             .send()
                             .await?;
                         return Ok(());

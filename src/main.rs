@@ -13,7 +13,7 @@ use crate::{bot::Gauss, database::Database};
 
 use anyhow::Result;
 use bb8_postgres::tokio_postgres::NoTls;
-use teloxide::prelude2::*;
+use teloxide::prelude::*;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{fmt, prelude::*, registry::Registry};
 

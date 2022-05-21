@@ -25,7 +25,7 @@ impl super::db::CreateTable for Mapping {
 }
 
 impl Mapping {
-    pub fn build_set_query(user_id: i64, username: String) -> anyhow::Result<String> {
+    pub fn build_set_query(user_id: u64, username: String) -> anyhow::Result<String> {
         Ok(Query::select()
             .expr(Func::cust(UpdateMapping).args(vec![Expr::val(user_id), Expr::val(username)]))
             .to_string(PostgresQueryBuilder))
