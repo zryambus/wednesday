@@ -82,7 +82,8 @@ async fn main() {
 
     let mut options = sentry::ClientOptions::new();
     options.release = sentry::release_name!();
-    options.traces_sample_rate = 0.5;
+    options.traces_sample_rate = cfg.traces_sample_rate()
+        .expect("Could not read traces_sample_rate value from config");
 
     #[cfg(debug_assertions)]
     {

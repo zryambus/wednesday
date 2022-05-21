@@ -46,4 +46,8 @@ impl Cfg {
     pub fn cache(&self) -> Result<String> {
         Ok(self.read()?.get_string("cache")?)
     }
+
+    pub fn traces_sample_rate(&self) -> Result<f32> {
+        Ok(self.read()?.get_float("traces_sample_rate")? as f32)
+    }
 }
