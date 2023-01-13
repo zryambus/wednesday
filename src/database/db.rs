@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, Context};
 use bb8_postgres::tokio_postgres::NoTls;
 use rust_embed::RustEmbed;
 use sea_query::{Expr, Func, Order, PostgresQueryBuilder, Query};
@@ -159,16 +159,17 @@ impl Database {
         user_id: u64,
         kind: UpdateKind,
     ) -> Result<()> {
-        let today = chrono::Utc::today()
-            .with_timezone(&chrono::FixedOffset::east(3 * 3600))
+        let today = chrono::Utc::now()
+            .with_timezone(&chrono::FixedOffset::east_opt(3 * 3600)
+                .with_context(|| "Could not set timezone for today")?)
             .naive_local();
 
         let query = Query::select()
-            .expr(Func::cust(UpdateStatistics).args(vec![
-                Expr::val(chat_id),
-                Expr::val(user_id),
-                Expr::val(kind),
-                Expr::val(today),
+            .expr(Func::cust(UpdateStatistics).args([
+                chat_id.into(),
+                user_id.into(),
+                kind.into(),
+                today.into(),
             ]))
             .to_string(PostgresQueryBuilder);
         tracing::Span::current().record("query", &query.as_str());
@@ -192,8 +193,9 @@ impl Database {
         result.insert(UpdateKind::Sticker, 0);
         result.insert(UpdateKind::ForwardedMeme, 0);
 
-        let today = chrono::Utc::today()
-            .with_timezone(&chrono::FixedOffset::east(3 * 3600))
+        let today = chrono::Utc::now()
+            .with_timezone(&chrono::FixedOffset::east_opt(3 * 3600)
+                .with_context(|| "Failed to set timezone")?)
             .naive_local();
 
         let query = Query::select()

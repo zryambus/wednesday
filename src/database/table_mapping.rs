@@ -1,5 +1,5 @@
 use crate::database::sql_functions::UpdateMapping;
-use sea_query::{ColumnDef, Expr, Func, Iden, PostgresQueryBuilder, Query, Table};
+use sea_query::{ColumnDef, Func, Iden, PostgresQueryBuilder, Query, Table};
 
 #[derive(Iden)]
 pub enum Mapping {
@@ -27,7 +27,7 @@ impl super::db::CreateTable for Mapping {
 impl Mapping {
     pub fn build_set_query(user_id: u64, username: String) -> anyhow::Result<String> {
         Ok(Query::select()
-            .expr(Func::cust(UpdateMapping).args(vec![Expr::val(user_id), Expr::val(username)]))
+            .expr(Func::cust(UpdateMapping).args([user_id.into(), username.into()]))
             .to_string(PostgresQueryBuilder))
     }
 }

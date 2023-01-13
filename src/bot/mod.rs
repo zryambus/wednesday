@@ -21,7 +21,7 @@ mod wednesday;
 use wednesday::WednesdayBot;
 
 #[derive(BotCommands, Clone, Debug)]
-#[command(rename = "lowercase", description = "These commands are supported:")]
+#[command(rename_rule = "lowercase", description = "These commands are supported:")]
 pub enum Command {
     #[command(description = "display this text.")]
     Help,
@@ -447,7 +447,7 @@ pub async fn update_users_mapping(_bot: &Bot, user: Option<&User>, pool: Pool) -
 pub async fn process_sticker(bot: Bot, msg: Message, sticker: &Sticker) -> Result<()> {
     const FORBIDDEN_STICKER_ID: &str = "AgADvgADzHD_Ag";
 
-    if sticker.file_unique_id.as_str() == FORBIDDEN_STICKER_ID {
+    if sticker.file.unique_id.as_str() == FORBIDDEN_STICKER_ID {
         bot.delete_message(msg.chat.id, msg.id).send().await?;
 
         let from = match msg.from() {

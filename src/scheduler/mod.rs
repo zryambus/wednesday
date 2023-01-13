@@ -3,7 +3,7 @@ mod rate_check_providers;
 use crate::cache::{CachePool, RateCheck};
 use crate::database::{Database, Pool};
 
-use clokwerk::{Interval::*, ScheduleHandle, TimeUnits};
+use clokwerk::{Interval::*, ScheduleHandle, TimeUnits, Job};
 use std::sync::Arc;
 use std::time::Duration;
 use teloxide::{prelude::*, ApiError, RequestError, types::ChatId};
@@ -18,7 +18,10 @@ pub struct Scheduler {
 
 impl Scheduler {
     pub fn new(bot: teloxide::Bot, pool: Pool, cache_pool: CachePool) -> Self {
-        let mut scheduler = clokwerk::Scheduler::with_tz(chrono::FixedOffset::east(3 * 3600));
+        let mut scheduler = clokwerk::Scheduler::with_tz(
+            chrono::FixedOffset::east_opt(3 * 3600)
+                .expect("Could not set tz for scheduler")
+        );
 
         let b = bot.clone();
         let p = pool.clone();
