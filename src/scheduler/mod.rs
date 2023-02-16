@@ -3,30 +3,34 @@ mod rate_check_providers;
 use crate::cache::{CachePool, RateCheck};
 use crate::database::{Database, Pool};
 
-use clokwerk::{Interval::*, ScheduleHandle, TimeUnits, Job};
+use clokwerk::{Interval::*, TimeUnits, Job};
 use std::sync::Arc;
 use std::time::Duration;
 use teloxide::{prelude::*, ApiError, RequestError, types::ChatId};
+use tokio::task::JoinHandle;
 
 use rate_check_providers::{
     BTCCheckProvider, ETHCheckProvider, RateCheckProvider, ZEECheckProvider,
 };
 
 pub struct Scheduler {
-    _schedule_handle: ScheduleHandle,
+    _schedule_handle: JoinHandle<()>,
 }
 
 impl Scheduler {
     pub fn new(bot: teloxide::Bot, pool: Pool, cache_pool: CachePool) -> Self {
-        let mut scheduler = clokwerk::Scheduler::with_tz(
+        let mut scheduler = clokwerk::AsyncScheduler::with_tz(
             chrono::FixedOffset::east_opt(3 * 3600)
                 .expect("Could not set tz for scheduler")
         );
 
         let b = bot.clone();
         let p = pool.clone();
+
         scheduler.every(Wednesday).at("9:00 am").run(move || {
-            Self::async_task(|| Self::send_toads(b.clone(), p.clone()));
+            let b = b.clone();
+            let p = p.clone();
+            Self::async_task(move || Self::send_toads(b.clone(), p.clone()))
         });
 
         let b = bot.clone();
@@ -37,45 +41,55 @@ impl Scheduler {
             .and_every(1.day())
             .at("6:00 pm")
             .run(move || {
-                Self::async_task(|| Self::send_rates(b.clone(), p.clone()));
+                let b = b.clone();
+                let p = p.clone();
+                Self::async_task(move || Self::send_rates(b.clone(), p.clone()))
             });
 
         let b = bot.clone();
         let p = pool.clone();
         let cp = cache_pool.clone();
         scheduler.every(1.minute()).run(move || {
+            let b = b.clone();
+            let p = p.clone();
             let provider = Arc::new(BTCCheckProvider::new(cp.clone()));
-            Self::async_task(|| Self::check_rate(b.clone(), p.clone(), provider.clone()))
+            Self::async_task(move || Self::check_rate(b.clone(), p.clone(), provider.clone()))
         });
 
         let b = bot.clone();
         let p = pool.clone();
         let cp = cache_pool.clone();
         scheduler.every(1.minute()).run(move || {
+            let b = b.clone();
+            let p = p.clone();
             let provider = Arc::new(ETHCheckProvider::new(cp.clone()));
-            Self::async_task(|| Self::check_rate(b.clone(), p.clone(), provider.clone()))
+            Self::async_task(move || Self::check_rate(b.clone(), p.clone(), provider.clone()))
         });
 
         scheduler.every(2.minute()).run(move || {
+            let b = bot.clone();
+            let p = pool.clone();
             let provider = Arc::new(ZEECheckProvider::new(cache_pool.clone()));
-            Self::async_task(|| Self::check_rate(bot.clone(), pool.clone(), provider.clone()))
+            Self::async_task(move || Self::check_rate(b.clone(), p.clone(), provider.clone()))
         });
 
-        let _schedule_handle = scheduler.watch_thread(Duration::from_secs(1));
-        Self { _schedule_handle }
+        let handle = tokio::task::spawn(async move {
+            loop {
+                scheduler.run_pending().await;
+                tokio::time::sleep(Duration::from_secs(30)).await;
+            }
+        });
+
+        Self { _schedule_handle: handle }
     }
 
-    fn async_task<Fut>(task: impl Fn() -> Fut)
+    async fn async_task<Fut>(task: impl Fn() -> Fut)
     where
         Fut: std::future::Future<Output = anyhow::Result<()>> + Send,
     {
-        tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(async move {
-                if let Err(ref e) = task().await {
-                    sentry::integrations::anyhow::capture_anyhow(e);
-                }
-            });
+        if let Err(ref e) = task().await {
+            sentry::integrations::anyhow::capture_anyhow(e);
+        }
     }
 
     #[tracing::instrument]
