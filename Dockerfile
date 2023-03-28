@@ -1,6 +1,6 @@
-FROM rust:alpine3.16 as build
+FROM rust:slim-bullseye as build
 
-RUN apk add --no-cache musl-dev
+RUN apt-get update && apt-get install -y build-essential
 
 COPY src /build/src
 COPY Cargo.toml /build/
@@ -9,9 +9,9 @@ COPY config.yaml.example /build/config.yaml
 WORKDIR /build
 RUN cargo build --release
 
-FROM alpine
+FROM debian:bullseye-slim
 
-RUN apk add ca-certificates
+RUN apt-get update && apt-get install -y ca-certificates
 
 COPY --from=build /build/target/release/wednesday /opt/wednesday/
 COPY --from=build /build/config.yaml /opt/wednesday/
