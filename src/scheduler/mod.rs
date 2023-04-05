@@ -99,14 +99,25 @@ impl Scheduler {
         let url = crate::toads::get_toad();
 
         for chat in chats {
+            tracing::warn!("Sending toad to dude {}", chat);
             if let Err(e) = bot.send_message(ChatId(chat), &url).send().await {
                 match e {
                     RequestError::Api(ref kind) => match kind {
                         ApiError::BotBlocked => {
-                            log::warn!("Chat {} blocked the bot. Removing from active chats", chat);
+                            tracing::warn!("Chat {} blocked the bot. Removing from active chats", chat);
                             db.remove(chat).await?;
                         }
+                        ApiError::ChatNotFound => {
+                            tracing::warn!("Chat {} was not found. Removing from active chats", chat);
+                            db.remove(chat).await?;
+                        },
                         _ => return Err(anyhow::anyhow!(e)),
+                    },
+                    RequestError::MigrateToChatId(chat_id) => {
+                        tracing::warn!("Chat {} was migrated to {}. Replacing", chat, chat_id);
+                        db.remove(chat).await?;
+                        db.add(chat_id).await?;
+                        bot.send_message(ChatId(chat_id), &url).send().await.ok();
                     },
                     _ => return Err(anyhow::anyhow!(e)),
                 }
