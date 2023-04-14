@@ -1,6 +1,20 @@
+use std::marker::PhantomData;
+
 use crate::cache::{Cache, CachePool, RateCheck};
-use crate::rates::{get_btc_rate, get_etc_rate, get_zee_rate};
+use crate::rates::{get_btc_rate, get_etc_rate, get_zee_rate, get_bnb_rate};
 use async_trait::async_trait;
+
+#[derive(Debug, Clone)]
+pub(crate) struct CheckProvider<T: Clone> {
+    pub cache: Cache,
+    phantom_data: PhantomData<T>,
+}
+
+impl<T: Clone> From<CachePool> for CheckProvider<T> {
+    fn from(pool: CachePool) -> Self {
+        Self { cache: Cache::new(pool), phantom_data: PhantomData::default() }
+    }
+}
 
 #[async_trait]
 pub(crate) trait RateCheckProvider {
@@ -11,20 +25,12 @@ pub(crate) trait RateCheckProvider {
     fn coin(&self) -> &'static str;
 }
 
-pub(crate) struct ETHCheckProvider {
-    cache: Cache,
-}
-
-impl ETHCheckProvider {
-    pub fn new(cache_pool: CachePool) -> Self {
-        Self {
-            cache: Cache::new(cache_pool),
-        }
-    }
-}
+#[derive(Debug, Clone)]
+pub(crate) struct ETH;
+pub(crate) type ETHRateCheckProvider = CheckProvider<ETH>;
 
 #[async_trait]
-impl RateCheckProvider for ETHCheckProvider {
+impl RateCheckProvider for ETHRateCheckProvider {
     async fn get_current_rate(&self) -> anyhow::Result<f64> {
         get_etc_rate().await
     }
@@ -46,20 +52,12 @@ impl RateCheckProvider for ETHCheckProvider {
     }
 }
 
-pub(crate) struct BTCCheckProvider {
-    cache: Cache,
-}
-
-impl BTCCheckProvider {
-    pub fn new(cache_pool: CachePool) -> Self {
-        Self {
-            cache: Cache::new(cache_pool),
-        }
-    }
-}
+#[derive(Debug, Clone)]
+pub(crate) struct BTC;
+pub(crate) type BTCRateCheckProvider = CheckProvider<BTC>;
 
 #[async_trait]
-impl RateCheckProvider for BTCCheckProvider {
+impl RateCheckProvider for BTCRateCheckProvider {
     async fn get_current_rate(&self) -> anyhow::Result<f64> {
         get_btc_rate().await
     }
@@ -81,20 +79,12 @@ impl RateCheckProvider for BTCCheckProvider {
     }
 }
 
-pub(crate) struct ZEECheckProvider {
-    cache: Cache,
-}
-
-impl ZEECheckProvider {
-    pub fn new(cache_pool: CachePool) -> Self {
-        Self {
-            cache: Cache::new(cache_pool),
-        }
-    }
-}
+#[derive(Debug, Clone)]
+pub(crate) struct ZEE;
+pub(crate) type ZEERateCheckProvider = CheckProvider<ZEE>;
 
 #[async_trait]
-impl RateCheckProvider for ZEECheckProvider {
+impl RateCheckProvider for ZEERateCheckProvider {
     async fn get_current_rate(&self) -> anyhow::Result<f64> {
         get_zee_rate().await
     }
@@ -113,5 +103,32 @@ impl RateCheckProvider for ZEECheckProvider {
 
     fn coin(&self) -> &'static str {
         "ZEE"
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct BNB;
+pub(crate) type BNBRateCheckProvider = CheckProvider<BNB>;
+
+#[async_trait]
+impl RateCheckProvider for BNBRateCheckProvider {
+    async fn get_current_rate(&self) -> anyhow::Result<f64> {
+        get_bnb_rate().await
+    }
+
+    async fn get_last_rates(&self) -> anyhow::Result<Vec<RateCheck>> {
+        self.cache.get_last_bnb_rate().await
+    }
+
+    async fn add_last_rate(&self, rate: &RateCheck) -> anyhow::Result<()> {
+        self.cache.add_last_bnb_rate(rate).await
+    }
+
+    fn step(&self) -> f64 {
+        10.
+    }
+
+    fn coin(&self) -> &'static str {
+        "BNB"
     }
 }

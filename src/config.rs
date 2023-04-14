@@ -50,4 +50,8 @@ impl Cfg {
     pub fn traces_sample_rate(&self) -> Result<f32> {
         Ok(self.read()?.get_float("traces_sample_rate")? as f32)
     }
+
+    pub fn admin_user_id(&self) -> Result<i64> {
+        Ok(self.read()?.get_int("admin_user_id")?)
+    }
 }

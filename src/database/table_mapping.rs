@@ -30,4 +30,11 @@ impl Mapping {
             .expr(Func::cust(UpdateMapping).args([user_id.into(), username.into()]))
             .to_string(PostgresQueryBuilder))
     }
+
+    pub fn build_get_mapping() -> anyhow::Result<String> {
+        Ok(Query::select()
+            .columns([Mapping::UserId, Mapping::Username])
+            .from(Mapping::Table)
+            .to_string(PostgresQueryBuilder))
+    }
 }

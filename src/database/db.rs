@@ -240,6 +240,17 @@ impl Database {
         }
         Ok(())
     }
+
+    pub async fn get_mapping(&self) -> Result<Vec<(i64, String)>> {
+        let query = Mapping::build_get_mapping()?;
+        let mapping: Vec<(i64, String)> = self.connection().await?
+            .query(&query, &[]).await?
+            .iter().map(|row| {
+                (row.get(0), row.get(1))
+            })
+            .collect();
+        Ok(mapping)
+    }
 }
 
 pub(crate) trait CreateTable {

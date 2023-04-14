@@ -14,7 +14,7 @@ async fn request_rate_from_binance(coin: &str) -> Result<f64> {
     while attempt < 3 {
         let response = reqwest::get(&url).await;
         let response = if let Err(e) = response {
-            tracing::debug!(
+            tracing::warn!(
                 "Error while trying to get data from {}: {}\nAttempt {}",
                 url,
                 e,
@@ -118,6 +118,11 @@ pub async fn get_ltc_rate() -> Result<f64> {
 #[instrument]
 pub async fn get_etc_rate() -> Result<f64> {
     request_rate_from_binance("ETC").await
+}
+
+#[instrument]
+pub async fn get_bnb_rate() -> Result<f64> {
+    request_rate_from_binance("BNB").await
 }
 
 #[instrument]

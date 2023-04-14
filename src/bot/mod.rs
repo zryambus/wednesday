@@ -37,7 +37,7 @@ pub enum Command {
     NotToday,
     #[command(description = "show status of this crypto chat")]
     Stonks,
-    #[command(description = "show rates of BTC, ETH and LTC to USD")]
+    #[command(description = "show rates of BTC, ETH and BNB to USD")]
     Rates,
     #[command(description = "show rate of BTC to USD")]
     Btc,
@@ -76,7 +76,11 @@ pub async fn commands_endpoint(
 ) -> Result<()> {
     let db = Database::new(pool.clone()).await?;
 
-    update_users_mapping(&bot, msg.from(), pool.clone()).await?;
+    update_users_mapping(&bot, msg.from(), pool.clone()).await
+        .map_err(|e| {
+            tracing::error!("Failed to update users mapping: {}", e);
+            e
+        }).ok();
 
     match command {
         Command::Help => {
@@ -127,6 +131,38 @@ pub async fn commands_endpoint(
 
     Ok(())
 }
+
+#[derive(BotCommands, Clone, Debug)]
+#[command(rename_rule = "lowercase", description = "These commands are supported:")]
+pub enum AdminCommand {
+    #[command(description = "display users mapping.")]
+    Mapping,
+}
+
+pub async fn admin_commands_endpoint(
+    bot: Bot,
+    msg: Message,
+    command: AdminCommand,
+    pool: Pool,
+) -> Result<()> {
+    let db = Database::new(pool.clone()).await?;
+
+    match command {
+        AdminCommand::Mapping => {
+            let mapping = db.get_mapping().await?;
+            let text = mapping.iter()
+                .map(|(id, username)| format!("{}: {}", id, username))
+                .collect::<Vec<String>>()
+                .join("\n");
+            bot.send_message(msg.chat.id, text)
+                .send()
+                .await?;
+        }
+    };
+
+    Ok(())
+}
+
 
 #[instrument(skip(db))]
 pub async fn on_start(bot: Bot, msg: Message, db: Database) -> Result<()> {
@@ -227,13 +263,13 @@ pub async fn on_crypto_status(bot: Bot, msg: Message, db: Database) -> Result<()
 pub async fn on_rates(bot: Bot, msg: Message) -> Result<()> {
     let chat = msg.chat.id;
 
-    let (btc, eth, zee) = try_join!(
+    let (btc, eth, bnb) = try_join!(
         rates::get_btc_rate(),
         rates::get_eth_rate(),
-        rates::get_zee_rate(),
+        rates::get_bnb_rate(),
     )?;
 
-    let text = format!("BTC = {}$\nETH = {}$\nZEE = {}$", btc, eth, zee);
+    let text = format!("BTC = {}$\nETH = {}$\nBNB = {}$", btc, eth, bnb);
 
     bot.send_message(chat, &text).send().await?;
     Ok(())
@@ -252,9 +288,17 @@ where
     let bot = WednesdayBot::new(bot, msg);
     let chat = bot.chat_id();
 
-    let rate = callback().await?;
+    let rate = callback().await;
 
-    let text = format!("Курс {} = {}$", coin, rate);
+    let text = match rate {
+        Ok(rate) => {
+            format!("Курс {} = {}$", coin, rate)
+        },
+        Err(e) => {
+            tracing::error!("on_coin callback finished with error: {}", e);
+            format!("Error: {}", e)
+        }
+    };
 
     bot.send_text(chat, text).await?;
     Ok(())
@@ -533,7 +577,7 @@ impl Gauss {
     }
 }
 
-pub fn get_handler() -> Handler<'static, DependencyMap, Result<()>, DpHandlerDescription> {
+pub fn get_handler(admin_user_id: i64) -> Handler<'static, DependencyMap, Result<()>, DpHandlerDescription> {
     async fn dummy() -> Result<()> {
         Ok(())
     }
@@ -580,6 +624,12 @@ pub fn get_handler() -> Handler<'static, DependencyMap, Result<()>, DpHandlerDes
                 return false;
             })
             .endpoint(dummy),
+        )
+        .branch(
+            dptree::entry()
+                .filter_command::<AdminCommand>()
+                .filter(move |msg: Message| msg.chat.id.0 == admin_user_id)
+                .endpoint(admin_commands_endpoint),
         )
         .branch(
             dptree::entry()

@@ -5,3 +5,4 @@ sentry_url:
 bot_name:
 coin_market_api_key:
 traces_sample_rate: 0
+admin_user_id: -1

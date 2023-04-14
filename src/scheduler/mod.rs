@@ -4,14 +4,15 @@ use crate::cache::{CachePool, RateCheck};
 use crate::database::{Database, Pool};
 
 use clokwerk::{Interval::*, TimeUnits, Job};
-use std::sync::Arc;
 use std::time::Duration;
 use teloxide::{prelude::*, ApiError, RequestError, types::ChatId};
 use tokio::task::JoinHandle;
 
 use rate_check_providers::{
-    BTCCheckProvider, ETHCheckProvider, RateCheckProvider, ZEECheckProvider,
+    BTCRateCheckProvider, ETHRateCheckProvider, ZEERateCheckProvider, BNBRateCheckProvider
 };
+
+use self::rate_check_providers::RateCheckProvider;
 
 pub struct Scheduler {
     _schedule_handle: JoinHandle<()>,
@@ -52,7 +53,7 @@ impl Scheduler {
         scheduler.every(1.minute()).run(move || {
             let b = b.clone();
             let p = p.clone();
-            let provider = Arc::new(BTCCheckProvider::new(cp.clone()));
+            let provider = BTCRateCheckProvider::from(cp.clone());
             Self::async_task(move || Self::check_rate(b.clone(), p.clone(), provider.clone()))
         });
 
@@ -62,14 +63,24 @@ impl Scheduler {
         scheduler.every(1.minute()).run(move || {
             let b = b.clone();
             let p = p.clone();
-            let provider = Arc::new(ETHCheckProvider::new(cp.clone()));
+            let provider = ETHRateCheckProvider::from(cp.clone());
+            Self::async_task(move || Self::check_rate(b.clone(), p.clone(), provider.clone()))
+        });
+
+        let b = bot.clone();
+        let p = pool.clone();
+        let cp = cache_pool.clone();
+        scheduler.every(1.minute()).run(move || {
+            let b = b.clone();
+            let p = p.clone();
+            let provider = BNBRateCheckProvider::from(cp.clone());
             Self::async_task(move || Self::check_rate(b.clone(), p.clone(), provider.clone()))
         });
 
         scheduler.every(2.minute()).run(move || {
             let b = bot.clone();
             let p = pool.clone();
-            let provider = Arc::new(ZEECheckProvider::new(cache_pool.clone()));
+            let provider = ZEERateCheckProvider::from(cache_pool.clone());
             Self::async_task(move || Self::check_rate(b.clone(), p.clone(), provider.clone()))
         });
 
@@ -149,7 +160,7 @@ impl Scheduler {
     async fn check_rate(
         bot: Bot,
         pool: Pool,
-        provider: Arc<impl RateCheckProvider>,
+        provider: impl RateCheckProvider,
     ) -> anyhow::Result<()> {
         let db = Database::new(pool.clone()).await?;
 
