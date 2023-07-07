@@ -50,7 +50,7 @@ impl Scheduler {
         let b = bot.clone();
         let p = pool.clone();
         let cp = cache_pool.clone();
-        scheduler.every(1.minute()).run(move || {
+        scheduler.every(10.minute()).run(move || {
             let b = b.clone();
             let p = p.clone();
             let provider = BTCRateCheckProvider::from(cp.clone());
@@ -60,7 +60,7 @@ impl Scheduler {
         let b = bot.clone();
         let p = pool.clone();
         let cp = cache_pool.clone();
-        scheduler.every(1.minute()).run(move || {
+        scheduler.every(10.minute()).run(move || {
             let b = b.clone();
             let p = p.clone();
             let provider = ETHRateCheckProvider::from(cp.clone());
@@ -70,14 +70,14 @@ impl Scheduler {
         let b = bot.clone();
         let p = pool.clone();
         let cp = cache_pool.clone();
-        scheduler.every(1.minute()).run(move || {
+        scheduler.every(10.minute()).run(move || {
             let b = b.clone();
             let p = p.clone();
             let provider = BNBRateCheckProvider::from(cp.clone());
             Self::async_task(move || Self::check_rate(b.clone(), p.clone(), provider.clone()))
         });
 
-        scheduler.every(2.minute()).run(move || {
+        scheduler.every(10.minute()).run(move || {
             let b = bot.clone();
             let p = pool.clone();
             let provider = ZEERateCheckProvider::from(cache_pool.clone());
@@ -112,6 +112,8 @@ impl Scheduler {
         for chat in chats {
             tracing::warn!("Sending toad to dude {}", chat);
             if let Err(e) = bot.send_message(ChatId(chat), &url).send().await {
+                sentry::capture_error(&e);
+
                 match e {
                     RequestError::Api(ref kind) => match kind {
                         ApiError::BotBlocked => {
@@ -122,7 +124,11 @@ impl Scheduler {
                             tracing::warn!("Chat {} was not found. Removing from active chats", chat);
                             db.remove(chat).await?;
                         },
-                        _ => return Err(anyhow::anyhow!(e)),
+                        ApiError::UserDeactivated => {
+                            tracing::warn!("Chat {} was deactivated. Removing from active chats", chat);
+                            db.remove(chat).await?;
+                        }
+                        _ => {}
                     },
                     RequestError::MigrateToChatId(chat_id) => {
                         tracing::warn!("Chat {} was migrated to {}. Replacing", chat, chat_id);
@@ -130,7 +136,7 @@ impl Scheduler {
                         db.add(chat_id).await?;
                         bot.send_message(ChatId(chat_id), &url).send().await.ok();
                     },
-                    _ => return Err(anyhow::anyhow!(e)),
+                    _ => {},
                 }
             }
         }

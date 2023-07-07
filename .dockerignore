@@ -2,3 +2,6 @@ target
 config.yaml
 .idea
 Cargo.lock
+.env
+compose-dev.yaml
+!target/x86_64-unknown-linux-gnu

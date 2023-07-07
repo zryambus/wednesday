@@ -49,12 +49,13 @@ async fn try_main(cfg: config::Cfg) -> Result<()> {
 
     let _scheduler = scheduler::Scheduler::new(bot.clone(), pool.clone(), cache_pool.clone());
 
-    Dispatcher::builder(bot, crate::bot::get_handler(admin_user_id))
+    Dispatcher::builder(bot, crate::bot::get_handler())
         .dependencies(dptree::deps![
             pool.clone(),
             cache_pool.clone(),
             cfg.bot_name()?,
-            Arc::new(RwLock::new(Gauss::new(17., 4.)))
+            Arc::new(RwLock::new(Gauss::new(17., 4.))),
+            admin_user_id
         ])
         .default_handler(|upd| async move {
             tracing::warn!("Unhandled update: {:?}", upd);

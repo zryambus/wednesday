@@ -51,7 +51,11 @@ impl Cfg {
         Ok(self.read()?.get_float("traces_sample_rate")? as f32)
     }
 
-    pub fn admin_user_id(&self) -> Result<i64> {
-        Ok(self.read()?.get_int("admin_user_id")?)
+    pub fn admin_user_id(&self) -> Result<AdminUserId> {
+        let id = self.read()?.get_int("admin_user_id")?;
+        Ok(AdminUserId(id))
     }
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct AdminUserId(pub i64);
