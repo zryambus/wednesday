@@ -274,11 +274,11 @@ pub async fn on_crypto_status(bot: Bot, msg: Message, db: Database) -> Result<()
 pub async fn on_rates(bot: Bot, msg: Message) -> Result<()> {
     let chat = msg.chat.id;
 
-    let (btc, eth, bnb, ltc) = match try_join!(
+    let (btc, eth, bnb, sol) = match try_join!(
         rates::get_btc_rate(),
         rates::get_eth_rate(),
         rates::get_bnb_rate(),
-        rates::get_ltc_rate()
+        rates::get_sol_rate()
     ) {
         Ok(rates) => rates,
         Err(e) => {
@@ -290,7 +290,7 @@ pub async fn on_rates(bot: Bot, msg: Message) -> Result<()> {
         }
     };
 
-    let text = format!("BTC = {}$\nETH = {}$\nBNB = {}$\nLTC = {}$", btc, eth, bnb, ltc);
+    let text = format!("BTC = {}$\nETH = {}$\nBNB = {}$\nSOL = {}$", btc, eth, bnb, sol);
     bot.send_message(chat, &text).send().await?;
 
     Ok(())
