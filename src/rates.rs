@@ -164,6 +164,11 @@ pub async fn get_ltc_rate() -> Result<f64> {
 }
 
 #[instrument]
+pub async fn get_sol_rate() -> Result<f64> {
+    request_rate_from_binance("SOL").await
+}
+
+#[instrument]
 pub async fn get_etc_rate() -> Result<f64> {
     request_rate_from_binance("ETC").await
 }
