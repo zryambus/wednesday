@@ -278,7 +278,7 @@ pub async fn on_rates(bot: Bot, msg: Message) -> Result<()> {
         rates::get_btc_rate(),
         rates::get_eth_rate(),
         rates::get_bnb_rate(),
-        rates::get_ltc_rate()
+        rates::get_sol_rate()
     ) {
         Ok(rates) => rates,
         Err(e) => {
