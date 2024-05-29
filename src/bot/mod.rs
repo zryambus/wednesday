@@ -7,6 +7,7 @@ use crate::rates;
 
 use anyhow::{anyhow, Error, Result};
 use futures::try_join;
+use rand::Rng;
 use serde::Deserialize;
 use teloxide::dispatching::{UpdateFilterExt, DpHandlerDescription};
 use teloxide::types::InputFile;
@@ -59,6 +60,10 @@ pub enum Command {
     Bnb,
     #[command(description = "show rate of LUNA to USD")]
     Luna,
+    #[command(description = "show rate of NOT to USD")]
+    Not,
+    #[command(description = "show rate of TON to USD")]
+    Ton,
     #[command(description = "show statistics")]
     Stats,
     #[command(description = "show BTC and ETH dominance")]
@@ -124,6 +129,12 @@ pub async fn commands_endpoint(
         Command::Luna => {
             on_coin_with_24hr_change(bot, msg, "LUNA", &rates::get_luna_rate_with_24hr_change)
                 .await?
+        }
+        Command::Not => {
+            on_coin_with_24hr_change(bot, msg, "NOT", &rates::get_not_rate_with_24hr_change).await?
+        }
+        Command::Ton => {
+            on_coin_with_24hr_change(bot, msg, "TON", &rates::get_ton_rate_with_24hr_change).await?
         }
         Command::Stats => on_stats(bot, msg, db).await?,
         Command::Dominance => on_dominance(bot, msg, cache_pool.clone()).await?,
@@ -690,6 +701,15 @@ pub fn get_handler() -> Handler<'static, DependencyMap, Result<()>, DpHandlerDes
         Ok(())
     }
 
+    fn get_toxicity_level(id: UserId) -> u32 {
+        let mut rng = rand::thread_rng();
+        let mut percents = rng.gen_range(0..=100);
+        if id.0 == 203295139 {
+            percents = 200;
+        }
+        percents
+    }
+
     async fn inline_endpoint(bot: Bot, query: InlineQuery, g: Arc<RwLock<Gauss>>) -> Result<()> {
         let cocksize = g.write().map_err(|e| anyhow!("{}", e))?.next() as i32;
         let emoji = match cocksize {
@@ -702,7 +722,7 @@ pub fn get_handler() -> Handler<'static, DependencyMap, Result<()>, DpHandlerDes
             _ => "😮"
         };
         let response = InlineQueryResultArticle::new(
-            format!("{}", query.from.id),
+            format!("{}:cock", query.from.id),
             "Share your cock size",
             InputMessageContent::Text(InputMessageContentText::new(format!(
                 "My cock size is {}cm {}",
@@ -710,7 +730,19 @@ pub fn get_handler() -> Handler<'static, DependencyMap, Result<()>, DpHandlerDes
                 emoji
             ))),
         );
-        let mut answer = bot.answer_inline_query(query.id, vec![response.into()]);
+
+        let percents = get_toxicity_level(query.from.id);
+
+        let response2 = InlineQueryResultArticle::new(
+            format!("{}:toxicity", query.from.id),
+            "Share your toxicity rate",
+            InputMessageContent::Text(InputMessageContentText::new(format!(
+                "My toxicity level is {}%",
+                percents
+            )))
+        );
+
+        let mut answer = bot.answer_inline_query(query.id, vec![response.into(), response2.into()]);
         answer.cache_time = Some(60); // is secs
         answer.is_personal = Some(true); // cached for specific user
         answer.send().await?;

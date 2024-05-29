@@ -44,6 +44,8 @@ impl Cache {
     const KEY_ETH_LAST_RATE: &'static str = "ETH_LAST_RATE";
     const KEY_ZEE_LAST_RATE: &'static str = "ZEE_LAST_RATE";
     const KEY_BNB_LAST_RATE: &'static str = "BNB_LAST_RATE";
+    const KEY_NOT_LAST_RATE: &'static str = "NOT_LAST_RATE";
+    const KEY_TON_LAST_RATE: &'static str = "TON_LAST_RATE";
 
     pub fn new(pool: CachePool) -> Self {
         Self { pool }
@@ -144,5 +146,21 @@ impl Cache {
 
     pub async fn add_last_bnb_rate(&self, value: &RateCheck) -> anyhow::Result<()> {
         self.add_last_rate(Self::KEY_BNB_LAST_RATE, value).await
+    }
+
+    pub async fn get_last_not_rate(&self) -> anyhow::Result<Vec<RateCheck>> {
+        self.get_last_rate(Self::KEY_NOT_LAST_RATE).await
+    }
+
+    pub async fn add_last_not_rate(&self, value: &RateCheck) -> anyhow::Result<()> {
+        self.add_last_rate(Self::KEY_NOT_LAST_RATE, value).await
+    }
+
+    pub async fn get_last_ton_rate(&self) -> anyhow::Result<Vec<RateCheck>> {
+        self.get_last_rate(Self::KEY_TON_LAST_RATE).await
+    }
+
+    pub async fn add_last_ton_rate(&self, value: &RateCheck) -> anyhow::Result<()> {
+        self.add_last_rate(Self::KEY_TON_LAST_RATE, value).await
     }
 }

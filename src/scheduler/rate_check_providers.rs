@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use crate::cache::{Cache, CachePool, RateCheck};
-use crate::rates::{get_btc_rate, get_etc_rate, get_zee_rate, get_bnb_rate};
+use crate::rates::{get_bnb_rate, get_btc_rate, get_eth_rate, get_not_rate, get_zee_rate, get_ton_rate};
 use async_trait::async_trait;
 
 #[derive(Debug, Clone)]
@@ -32,7 +32,7 @@ pub(crate) type ETHRateCheckProvider = CheckProvider<ETH>;
 #[async_trait]
 impl RateCheckProvider for ETHRateCheckProvider {
     async fn get_current_rate(&self) -> anyhow::Result<f64> {
-        get_etc_rate().await
+        get_eth_rate().await
     }
 
     async fn get_last_rates(&self) -> anyhow::Result<Vec<RateCheck>> {
@@ -130,5 +130,59 @@ impl RateCheckProvider for BNBRateCheckProvider {
 
     fn coin(&self) -> &'static str {
         "BNB"
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct NOT;
+pub(crate) type NOTRateCheckProvider = CheckProvider<NOT>;
+
+#[async_trait]
+impl RateCheckProvider for NOTRateCheckProvider {
+    async fn get_current_rate(&self) -> anyhow::Result<f64> {
+        get_not_rate().await
+    }
+
+    async fn get_last_rates(&self) -> anyhow::Result<Vec<RateCheck>> {
+        self.cache.get_last_not_rate().await
+    }
+
+    async fn add_last_rate(&self, rate: &RateCheck) -> anyhow::Result<()> {
+        self.cache.add_last_not_rate(rate).await
+    }
+
+    fn step(&self) -> f64 {
+        0.001
+    }
+
+    fn coin(&self) -> &'static str {
+        "NOT"
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct TON;
+pub(crate) type TONRateCheckProvider = CheckProvider<TON>;
+
+#[async_trait]
+impl RateCheckProvider for TONRateCheckProvider {
+    async fn get_current_rate(&self) -> anyhow::Result<f64> {
+        get_ton_rate().await
+    }
+
+    async fn get_last_rates(&self) -> anyhow::Result<Vec<RateCheck>> {
+        self.cache.get_last_ton_rate().await
+    }
+
+    async fn add_last_rate(&self, rate: &RateCheck) -> anyhow::Result<()> {
+        self.cache.add_last_ton_rate(rate).await
+    }
+
+    fn step(&self) -> f64 {
+        0.1
+    }
+
+    fn coin(&self) -> &'static str {
+        "TON"
     }
 }

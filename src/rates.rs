@@ -189,6 +189,16 @@ pub async fn get_zee_rate() -> Result<f64> {
 }
 
 #[instrument]
+pub async fn get_not_rate() -> Result<f64> {
+    request_rate_from_binance("NOT").await
+}
+
+#[instrument]
+pub async fn get_ton_rate() -> Result<f64> {
+    request_rate_from_coingecko("the-open-network").await
+}
+
+#[instrument]
 pub async fn get_zee_rate_with_24hr_change() -> Result<(f64, f64)> {
     request_rate_from_coingecko_with_24hr_change("zeroswap").await
 }
@@ -207,6 +217,17 @@ pub async fn get_bnb_rate_with_24hr_change() -> Result<(f64, f64)> {
 pub async fn get_luna_rate_with_24hr_change() -> Result<(f64, f64)> {
     request_rate_from_coingecko_with_24hr_change("terra-luna").await
 }
+
+#[instrument]
+pub async fn get_not_rate_with_24hr_change() -> Result<(f64, f64)> {
+    request_rate_from_coingecko_with_24hr_change("notcoin").await
+}
+
+#[instrument]
+pub async fn get_ton_rate_with_24hr_change() -> Result<(f64, f64)> {
+    request_rate_from_coingecko_with_24hr_change("the-open-network").await
+}
+
 
 #[instrument]
 pub async fn get_usd_rate() -> Result<f64> {

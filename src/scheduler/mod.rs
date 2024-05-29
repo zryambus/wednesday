@@ -9,7 +9,8 @@ use teloxide::{prelude::*, ApiError, RequestError, types::ChatId};
 use tokio::task::JoinHandle;
 
 use rate_check_providers::{
-    BTCRateCheckProvider, ETHRateCheckProvider, ZEERateCheckProvider, BNBRateCheckProvider
+    BTCRateCheckProvider, ETHRateCheckProvider, ZEERateCheckProvider, BNBRateCheckProvider, NOTRateCheckProvider,
+    TONRateCheckProvider
 };
 
 use self::rate_check_providers::RateCheckProvider;
@@ -74,6 +75,26 @@ impl Scheduler {
             let b = b.clone();
             let p = p.clone();
             let provider = BNBRateCheckProvider::from(cp.clone());
+            Self::async_task(move || Self::check_rate(b.clone(), p.clone(), provider.clone()))
+        });
+
+        let b = bot.clone();
+        let p = pool.clone();
+        let cp = cache_pool.clone();
+        scheduler.every(10.minute()).run(move || {
+            let b = b.clone();
+            let p = p.clone();
+            let provider = NOTRateCheckProvider::from(cp.clone());
+            Self::async_task(move || Self::check_rate(b.clone(), p.clone(), provider.clone()))
+        });
+
+        let b = bot.clone();
+        let p = pool.clone();
+        let cp = cache_pool.clone();
+        scheduler.every(10.minute()).run(move || {
+            let b = b.clone();
+            let p = p.clone();
+            let provider = TONRateCheckProvider::from(cp.clone());
             Self::async_task(move || Self::check_rate(b.clone(), p.clone(), provider.clone()))
         });
 
