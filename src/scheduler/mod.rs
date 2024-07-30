@@ -1,16 +1,18 @@
 mod rate_check_providers;
+#[macro_use]
+mod retry;
 
 use crate::cache::{CachePool, RateCheck};
 use crate::database::{Database, Pool};
 
-use clokwerk::{Interval::*, TimeUnits, Job};
+use clokwerk::{Interval::*, Job, TimeUnits};
 use std::time::Duration;
-use teloxide::{prelude::*, ApiError, RequestError, types::ChatId};
+use teloxide::{prelude::*, types::ChatId, ApiError, RequestError};
 use tokio::task::JoinHandle;
 
 use rate_check_providers::{
-    BTCRateCheckProvider, ETHRateCheckProvider, ZEERateCheckProvider, BNBRateCheckProvider, NOTRateCheckProvider,
-    TONRateCheckProvider
+    BNBRateCheckProvider, BTCRateCheckProvider, ETHRateCheckProvider, NOTRateCheckProvider,
+    TONRateCheckProvider, ZEERateCheckProvider,
 };
 
 use self::rate_check_providers::RateCheckProvider;
@@ -22,8 +24,7 @@ pub struct Scheduler {
 impl Scheduler {
     pub fn new(bot: teloxide::Bot, pool: Pool, cache_pool: CachePool) -> Self {
         let mut scheduler = clokwerk::AsyncScheduler::with_tz(
-            chrono::FixedOffset::east_opt(3 * 3600)
-                .expect("Could not set tz for scheduler")
+            chrono::FixedOffset::east_opt(3 * 3600).expect("Could not set tz for scheduler"),
         );
 
         let b = bot.clone();
@@ -112,7 +113,9 @@ impl Scheduler {
             }
         });
 
-        Self { _schedule_handle: handle }
+        Self {
+            _schedule_handle: handle,
+        }
     }
 
     async fn async_task<Fut>(task: impl Fn() -> Fut)
@@ -127,7 +130,7 @@ impl Scheduler {
     #[tracing::instrument]
     async fn send_toads(bot: Bot, pool: Pool) -> anyhow::Result<()> {
         let db = Database::new(pool.clone()).await?;
-        let chats = db.get_all_active_chats().await?;
+        let chats = retry! { db.get_all_active_chats().await, 3, 1000 }?;
         let url = crate::toads::get_toad();
 
         for chat in chats {
@@ -138,15 +141,24 @@ impl Scheduler {
                 match e {
                     RequestError::Api(ref kind) => match kind {
                         ApiError::BotBlocked => {
-                            tracing::warn!("Chat {} blocked the bot. Removing from active chats", chat);
+                            tracing::warn!(
+                                "Chat {} blocked the bot. Removing from active chats",
+                                chat
+                            );
                             db.remove(chat).await?;
                         }
                         ApiError::ChatNotFound => {
-                            tracing::warn!("Chat {} was not found. Removing from active chats", chat);
+                            tracing::warn!(
+                                "Chat {} was not found. Removing from active chats",
+                                chat
+                            );
                             db.remove(chat).await?;
-                        },
+                        }
                         ApiError::UserDeactivated => {
-                            tracing::warn!("Chat {} was deactivated. Removing from active chats", chat);
+                            tracing::warn!(
+                                "Chat {} was deactivated. Removing from active chats",
+                                chat
+                            );
                             db.remove(chat).await?;
                         }
                         _ => {}
@@ -156,8 +168,8 @@ impl Scheduler {
                         db.remove(chat).await?;
                         db.add(chat_id).await?;
                         bot.send_message(ChatId(chat_id), &url).send().await.ok();
-                    },
-                    _ => {},
+                    }
+                    _ => {}
                 }
             }
         }
@@ -167,7 +179,7 @@ impl Scheduler {
     #[tracing::instrument]
     async fn send_rates(bot: Bot, pool: Pool) -> anyhow::Result<()> {
         let db = Database::new(pool.clone()).await?;
-        let chats = db.get_all_active_crypto_chats().await?;
+        let chats = retry! { db.get_all_active_crypto_chats().await, 3, 1000 }?;
 
         let rate = crate::rates::get_btc_rate().await?;
 
@@ -233,7 +245,7 @@ impl Scheduler {
             return Ok(());
         }
 
-        let chats = db.get_all_active_crypto_chats().await?;
+        let chats = retry! { db.get_all_active_crypto_chats().await, 3, 1000 }?;
         for chat in chats {
             let text = format!(
                 "{} rate now is {}$ {}",
