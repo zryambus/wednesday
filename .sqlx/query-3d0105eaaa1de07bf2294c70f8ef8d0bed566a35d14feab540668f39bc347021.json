@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT update_mapping($1, $2)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "update_mapping",
+        "type_info": "Void"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Varchar"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "3d0105eaaa1de07bf2294c70f8ef8d0bed566a35d14feab540668f39bc347021"
+}

@@ -2,16 +2,18 @@ use std::sync::{Arc, RwLock};
 
 use crate::cache::{Cache, CachePool};
 use crate::config::AdminUserId;
-use crate::database::{Database, Pool, UpdateKind};
+use crate::database::{Database, Pool};
 use crate::rates;
 
 use anyhow::{anyhow, Error, Result};
 use futures::try_join;
 use rand::Rng;
 use serde::Deserialize;
-use teloxide::dispatching::{UpdateFilterExt, DpHandlerDescription};
+use teloxide::dispatching::{DpHandlerDescription, UpdateFilterExt};
 use teloxide::types::InputFile;
-use teloxide::types::{InlineQueryResultArticle, InputMessageContent, InputMessageContentText, ParseMode::MarkdownV2};
+use teloxide::types::{
+    InlineQueryResultArticle, InputMessageContent, InputMessageContentText, ParseMode::MarkdownV2,
+};
 use teloxide::{
     prelude::*,
     types::{Sticker, Update, User},
@@ -24,7 +26,10 @@ mod wednesday;
 use wednesday::WednesdayBot;
 
 #[derive(BotCommands, Clone, Debug)]
-#[command(rename_rule = "lowercase", description = "These commands are supported:")]
+#[command(
+    rename_rule = "lowercase",
+    description = "These commands are supported:"
+)]
 pub enum Command {
     #[command(description = "display this text.")]
     Help,
@@ -64,8 +69,6 @@ pub enum Command {
     Not,
     #[command(description = "show rate of TON to USD")]
     Ton,
-    #[command(description = "show statistics")]
-    Stats,
     #[command(description = "show BTC and ETH dominance")]
     Dominance,
     #[command(description = "show USD rate")]
@@ -83,11 +86,13 @@ pub async fn commands_endpoint(
 ) -> Result<()> {
     let db = Database::new(pool.clone()).await?;
 
-    update_users_mapping(&bot, msg.from(), pool.clone()).await
+    update_users_mapping(&bot, msg.from(), pool.clone())
+        .await
         .map_err(|e| {
             tracing::error!("Failed to update users mapping: {}", e);
             e
-        }).ok();
+        })
+        .ok();
 
     match command {
         Command::Help => {
@@ -136,7 +141,6 @@ pub async fn commands_endpoint(
         Command::Ton => {
             on_coin_with_24hr_change(bot, msg, "TON", &rates::get_ton_rate_with_24hr_change).await?
         }
-        Command::Stats => on_stats(bot, msg, db).await?,
         Command::Dominance => on_dominance(bot, msg, cache_pool.clone()).await?,
         Command::Usd => on_usd(bot, msg).await?,
         Command::All => on_all(bot, msg).await?,
@@ -146,7 +150,10 @@ pub async fn commands_endpoint(
 }
 
 #[derive(BotCommands, Clone, Debug)]
-#[command(rename_rule = "lowercase", description = "These commands are supported:")]
+#[command(
+    rename_rule = "lowercase",
+    description = "These commands are supported:"
+)]
 pub enum AdminCommand {
     #[command(description = "display users mapping.")]
     Mapping,
@@ -165,26 +172,24 @@ pub async fn admin_commands_endpoint(
     match command {
         AdminCommand::Mapping => {
             let mapping = db.get_mapping().await?;
-            let text = mapping.iter()
+            let text = mapping
+                .iter()
                 .map(|(id, username)| format!("{}: {}", id, username))
                 .collect::<Vec<String>>()
                 .join("\n");
-            bot.send_message(msg.chat.id, text)
-                .send()
-                .await?;
-        },
+            bot.send_message(msg.chat.id, text).send().await?;
+        }
         AdminCommand::Wednesday => {
             let chats = db.get_all_active_chats().await?;
             let url = crate::toads::get_toad();
             for chat in chats {
                 bot.send_message(ChatId(chat), &url).send().await.ok();
             }
-        },
+        }
     };
 
     Ok(())
 }
-
 
 #[instrument(skip(db))]
 pub async fn on_start(bot: Bot, msg: Message, db: Database) -> Result<()> {
@@ -240,12 +245,9 @@ pub async fn on_crypto_start(bot: Bot, msg: Message, db: Database) -> Result<()>
             .send()
             .await?;
     } else {
-        bot.send_message(
-            msg.chat.id,
-            "⚠ Current chat is already in the crypto list",
-        )
-        .send()
-        .await?;
+        bot.send_message(msg.chat.id, "⚠ Current chat is already in the crypto list")
+            .send()
+            .await?;
     }
 
     Ok(())
@@ -297,11 +299,14 @@ pub async fn on_rates(bot: Bot, msg: Message) -> Result<()> {
             sentry::integrations::anyhow::capture_anyhow(&e);
             let text = format!("Failed to request currencies: {}", e);
             bot.send_message(chat, &text).send().await.ok();
-            return Ok(())
+            return Ok(());
         }
     };
 
-    let text = format!("BTC = {}$\nETH = {}$\nBNB = {}$\nSOL = {}$", btc, eth, bnb, sol);
+    let text = format!(
+        "BTC = {}$\nETH = {}$\nBNB = {}$\nSOL = {}$",
+        btc, eth, bnb, sol
+    );
     bot.send_message(chat, &text).send().await?;
 
     Ok(())
@@ -325,7 +330,7 @@ where
     let text = match rate {
         Ok(rate) => {
             format!("Курс {} = {}$", coin, rate)
-        },
+        }
         Err(e) => {
             tracing::error!("on_coin callback finished with error: {}", e);
             format!("Error: {}", e)
@@ -353,32 +358,6 @@ where
     let text = format!("Курс {} = {}$ ({:.2}%)", coin, rate, change);
 
     bot.send_message(chat, &text).send().await?;
-    Ok(())
-}
-
-#[instrument(skip(db))]
-async fn on_stats(bot: Bot, msg: Message, db: Database) -> Result<()> {
-    let user_id = msg.from().unwrap().id;
-    let chat_id = msg.chat.id;
-    let stats = db.get_statistics(chat_id.0, user_id.0).await?;
-
-    let mut text = String::from("Your statistics for today:\n");
-    for (kind, count) in stats {
-        match kind {
-            UpdateKind::TextMessage => {
-                text.push_str(&format!("Messages: {}\n", count));
-            }
-            UpdateKind::Sticker => {
-                text.push_str(&format!("Sticker: {}\n", count));
-            }
-            UpdateKind::ForwardedMeme => {
-                text.push_str(&format!("Memes: {}\n", count));
-            }
-        }
-    }
-
-    bot.send_message(msg.chat.id, text).send().await?;
-
     Ok(())
 }
 
@@ -445,55 +424,75 @@ pub async fn on_dominance(bot: Bot, msg: Message, cache_pool: CachePool) -> Resu
 }
 
 #[instrument]
-pub async fn text_handler(bot: Bot, msg: Message, pool: Pool, admin_user_id: AdminUserId) -> Result<()> {
-    let db = Database::new(pool.clone()).await?;
+pub async fn text_handler(
+    bot: Bot,
+    msg: Message,
+    pool: Pool,
+    admin_user_id: AdminUserId,
+) -> Result<()> {
     let user_id = if let Some(from) = msg.from() {
         from.id
     } else {
         tracing::debug!("Could not update statistics for message: {:?}", msg);
         return Ok(());
     };
-    let chat_id = msg.chat.id;
 
     update_users_mapping(&bot, msg.from(), pool.clone()).await?;
 
-    db.update_statistics(chat_id.0, user_id.0, UpdateKind::TextMessage)
-        .await?;
-
     if msg.chat.is_private() {
-        bot.send_message(ChatId(admin_user_id.0), format!("`reply|{}|Type here...`", user_id.0))
-            .parse_mode(MarkdownV2)
-            .send().await?;
-        bot.forward_message(ChatId(admin_user_id.0), msg.chat.id, msg.id).await?;
+        bot.send_message(
+            ChatId(admin_user_id.0),
+            format!("`reply|{}|Type here...`", user_id.0),
+        )
+        .parse_mode(MarkdownV2)
+        .send()
+        .await?;
+        bot.forward_message(ChatId(admin_user_id.0), msg.chat.id, msg.id)
+            .await?;
     }
 
     Ok(())
 }
 
 #[instrument]
-pub async fn admin_text_handler(bot: Bot, msg: Message, pool: Pool, admin_user_id: AdminUserId) -> Result<()> {
+pub async fn admin_text_handler(
+    bot: Bot,
+    msg: Message,
+    pool: Pool,
+    admin_user_id: AdminUserId,
+) -> Result<()> {
     let text = match msg.text().or(msg.caption()) {
         Some(text) => text,
         None => {
-            bot.send_message(ChatId(admin_user_id.0), format!("No text in reply")).send().await?;
-            return Ok(())
+            bot.send_message(ChatId(admin_user_id.0), format!("No text in reply"))
+                .send()
+                .await?;
+            return Ok(());
         }
     };
 
     if text.starts_with("reply|") {
         let parts: Vec<&str> = text.split("|").into_iter().collect();
         if parts.len() < 3 {
-            bot.send_message(ChatId(admin_user_id.0), format!("Insufficent size of parts vector: {}", parts.len()))
-                .send().await?;
-            return Ok(())
+            bot.send_message(
+                ChatId(admin_user_id.0),
+                format!("Insufficent size of parts vector: {}", parts.len()),
+            )
+            .send()
+            .await?;
+            return Ok(());
         }
 
         let chat_id = match parts[1].parse::<i64>() {
             Ok(chat_id) => ChatId(chat_id),
             Err(e) => {
-                bot.send_message(ChatId(admin_user_id.0), format!("Could not parse chat_id: {}", e))
-                    .send().await?;
-                return Ok(())
+                bot.send_message(
+                    ChatId(admin_user_id.0),
+                    format!("Could not parse chat_id: {}", e),
+                )
+                .send()
+                .await?;
+                return Ok(());
             }
         };
 
@@ -504,24 +503,30 @@ pub async fn admin_text_handler(bot: Bot, msg: Message, pool: Pool, admin_user_i
                 bot.send_photo(chat_id, InputFile::file_id(&photos[0].file.id))
                     .caption(reply_text)
                     .parse_mode(MarkdownV2)
-                    .send().await?;
-            },
+                    .send()
+                    .await?;
+            }
             None => {
                 bot.send_message(chat_id, reply_text)
-                .parse_mode(MarkdownV2)
-                .send().await?;
+                    .parse_mode(MarkdownV2)
+                    .send()
+                    .await?;
             }
         }
     } else if text.starts_with("broadcast|") {
         let parts: Vec<&str> = text.split("|").into_iter().collect();
         if parts.len() < 2 {
-            bot.send_message(ChatId(admin_user_id.0), format!("Insufficent size of parts vector: {}", parts.len()))
-                .send().await?;
-            return Ok(())
+            bot.send_message(
+                ChatId(admin_user_id.0),
+                format!("Insufficent size of parts vector: {}", parts.len()),
+            )
+            .send()
+            .await?;
+            return Ok(());
         }
 
         let broadcast_text = escape_text(parts[1..].to_vec().join(""))?;
-        
+
         let db = Database::new(pool).await?;
         let chats = db.get_all_active_chats().await?;
 
@@ -532,16 +537,30 @@ pub async fn admin_text_handler(bot: Bot, msg: Message, pool: Pool, admin_user_i
                     bot.send_photo(chat_id, InputFile::file_id(&photos[0].file.id))
                         .caption(&broadcast_text)
                         .parse_mode(MarkdownV2)
-                        .send().await.map_err(|e| {
-                            tracing::error!("Failed to send broacast message to {}. Cause: {}", chat_id, e);
-                        }).ok();
-                },
+                        .send()
+                        .await
+                        .map_err(|e| {
+                            tracing::error!(
+                                "Failed to send broacast message to {}. Cause: {}",
+                                chat_id,
+                                e
+                            );
+                        })
+                        .ok();
+                }
                 None => {
                     bot.send_message(chat_id, &broadcast_text)
-                    .parse_mode(MarkdownV2)
-                    .send().await.map_err(|e| {
-                        tracing::error!("Failed to send broacast message to {}. Cause: {}", chat_id, e);
-                    }).ok();
+                        .parse_mode(MarkdownV2)
+                        .send()
+                        .await
+                        .map_err(|e| {
+                            tracing::error!(
+                                "Failed to send broacast message to {}. Cause: {}",
+                                chat_id,
+                                e
+                            );
+                        })
+                        .ok();
                 }
             }
         }
@@ -551,27 +570,8 @@ pub async fn admin_text_handler(bot: Bot, msg: Message, pool: Pool, admin_user_i
 
 #[instrument]
 pub async fn messages_handler(bot: Bot, msg: Message, message: Message, pool: Pool) -> Result<()> {
-    async fn impl_fn(bot: Bot, msg: Message, message: Message, pool: Pool) -> Result<()> {
-        let user_id = if let Some(from) = msg.from() {
-            from.id
-        } else {
-            return Ok(());
-        };
-
-        let db = Database::new(pool.clone()).await?;
-        let chat_id = msg.chat.id;
-
+    async fn impl_fn(bot: Bot, msg: Message, _message: Message, pool: Pool) -> Result<()> {
         update_users_mapping(&bot, msg.from(), pool.clone()).await?;
-
-        if let Some(sticker) = message.sticker() {
-            db.update_statistics(chat_id.0, user_id.0, UpdateKind::Sticker)
-                .await?;
-            process_sticker(bot, msg, sticker).await?;
-        }
-        if let Some(_forwarded_from) = message.forward_from_message_id() {
-            db.update_statistics(chat_id.0, user_id.0, UpdateKind::ForwardedMeme)
-                .await?;
-        }
 
         Ok(())
     }
@@ -592,7 +592,7 @@ pub async fn update_users_mapping(_bot: &Bot, user: Option<&User>, pool: Pool) -
     let db = Database::new(pool).await?;
     let mut mapping = vec![];
     if let Some(ref username) = user.username {
-        mapping.push((user.id.0, username.clone()));
+        mapping.push((user.id.0 as i64, username.clone()));
     } else {
         let first_name = &user.first_name;
         let username = if let Some(ref last_name) = user.last_name {
@@ -600,7 +600,7 @@ pub async fn update_users_mapping(_bot: &Bot, user: Option<&User>, pool: Pool) -
         } else {
             format!("{} {}", first_name, user.id)
         };
-        mapping.push((user.id.0, username));
+        mapping.push((user.id.0 as i64, username));
     }
     db.update_mapping(mapping).await?;
     Ok(())
@@ -719,15 +719,14 @@ pub fn get_handler() -> Handler<'static, DependencyMap, Result<()>, DpHandlerDes
             14..=18 => "🤗",
             19..=25 => "😎",
             26..=40 => "👬",
-            _ => "😮"
+            _ => "😮",
         };
         let response = InlineQueryResultArticle::new(
             format!("{}:cock", query.from.id),
             "Share your cock size",
             InputMessageContent::Text(InputMessageContentText::new(format!(
                 "My cock size is {}cm {}",
-                cocksize,
-                emoji
+                cocksize, emoji
             ))),
         );
 
@@ -739,7 +738,7 @@ pub fn get_handler() -> Handler<'static, DependencyMap, Result<()>, DpHandlerDes
             InputMessageContent::Text(InputMessageContentText::new(format!(
                 "My toxicity level is {}%",
                 percents
-            )))
+            ))),
         );
 
         let mut answer = bot.answer_inline_query(query.id, vec![response.into(), response2.into()]);
@@ -755,7 +754,11 @@ pub fn get_handler() -> Handler<'static, DependencyMap, Result<()>, DpHandlerDes
             // set sentry user middleware
             dptree::filter(|msg: Message| {
                 let id = Some(msg.chat.id.to_string());
-                let username = msg.chat.username().or(msg.chat.title()).map(ToOwned::to_owned);
+                let username = msg
+                    .chat
+                    .username()
+                    .or(msg.chat.title())
+                    .map(ToOwned::to_owned);
                 sentry::configure_scope(|scope| {
                     scope.set_user(Some(sentry::User {
                         username,
@@ -770,7 +773,9 @@ pub fn get_handler() -> Handler<'static, DependencyMap, Result<()>, DpHandlerDes
         .branch(
             dptree::entry()
                 .filter_command::<AdminCommand>()
-                .filter(move |msg: Message, admin_user_id: AdminUserId| msg.chat.id.0 == admin_user_id.0)
+                .filter(move |msg: Message, admin_user_id: AdminUserId| {
+                    msg.chat.id.0 == admin_user_id.0
+                })
                 .endpoint(admin_commands_endpoint),
         )
         .branch(
@@ -780,8 +785,10 @@ pub fn get_handler() -> Handler<'static, DependencyMap, Result<()>, DpHandlerDes
         )
         .branch(
             dptree::entry()
-            .filter(move |msg: Message, admin_user_id: AdminUserId| msg.chat.id.0 == admin_user_id.0 && msg.chat.is_private())
-            .endpoint(admin_text_handler)   
+                .filter(move |msg: Message, admin_user_id: AdminUserId| {
+                    msg.chat.id.0 == admin_user_id.0 && msg.chat.is_private()
+                })
+                .endpoint(admin_text_handler),
         )
         .branch(dptree::entry().endpoint(text_handler));
 
@@ -799,3 +806,4 @@ fn escape_text(text: String) -> Result<String> {
     let escape_regex = get_escape_regex()?;
     Ok(escape_regex.replace_all(&text, "\\$0").to_string())
 }
+

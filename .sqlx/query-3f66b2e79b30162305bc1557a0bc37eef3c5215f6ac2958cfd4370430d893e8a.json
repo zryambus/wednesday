@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT add_chat($1, 'wednesday')",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "add_chat",
+        "type_info": "Void"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "3f66b2e79b30162305bc1557a0bc37eef3c5215f6ac2958cfd4370430d893e8a"
+}

@@ -12,7 +12,6 @@ use std::sync::{Arc, RwLock};
 use crate::{bot::Gauss, database::Database};
 
 use anyhow::Result;
-use bb8_postgres::tokio_postgres::NoTls;
 use teloxide::prelude::*;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{fmt, prelude::*, registry::Registry};
@@ -21,8 +20,7 @@ async fn try_main(cfg: config::Cfg) -> Result<()> {
     let db_path = cfg.db()?;
     let cache_path = cfg.cache()?;
 
-    let manager = bb8_postgres::PostgresConnectionManager::new(db_path.parse().unwrap(), NoTls);
-    let pool = bb8::Pool::builder().build(manager).await?;
+    let pool = sqlx::PgPool::connect(&db_path).await?;
 
     let cache_manager = bb8_redis::RedisConnectionManager::new(format!("redis://{}", cache_path))?;
     let cache_pool = bb8::Pool::builder().build(cache_manager).await?;
@@ -30,16 +28,6 @@ async fn try_main(cfg: config::Cfg) -> Result<()> {
     tracing::debug!("testing database connection...");
     {
         Database::init(pool.clone()).await?;
-
-        {
-            let connection = pool.get().await?;
-            connection.execute("select $1::TEXT", &[&"WORKS"]).await?;
-
-            let assets = database::SQLInit::get("functions.sql").unwrap();
-            let sql = std::str::from_utf8(assets.data.as_ref())?;
-            connection.simple_query(sql).await?;
-        }
-
         tracing::debug!("database connection established");
     }
 
@@ -84,7 +72,8 @@ async fn main() {
 
     let mut options = sentry::ClientOptions::new();
     options.release = sentry::release_name!();
-    options.traces_sample_rate = cfg.traces_sample_rate()
+    options.traces_sample_rate = cfg
+        .traces_sample_rate()
         .expect("Could not read traces_sample_rate value from config");
 
     #[cfg(debug_assertions)]

@@ -19,11 +19,8 @@ serde_json = "=1.0.117"
 serde_cbor = "=0.11.2"
 reqwest = { version = "=0.12.4", default-features = false, features = ["rustls-tls", "json"] }
 futures = "=0.3.30"
-sea-query = { version = "=0.30.7", features = ["with-chrono"] }
 bb8 = "=0.8.3"
-bb8-postgres = "=0.8.1"
 bb8-redis = "=0.15.0"
-rust-embed = "=8.4.0"
 sentry = { version = "=0.32.3", default-features = false, features = ["anyhow", "reqwest", "rustls", "backtrace", "contexts", "panic", "log", "tracing"] }
 tracing = "=0.1.40"
 tracing-futures = "=0.2.5"
@@ -32,6 +29,7 @@ tracing-log = "=0.2.0"
 async-trait = "=0.1.80"
 alea = "=0.2.2"
 regex = "=1.10.4"
+sqlx = { version = "0.7", features = [ "runtime-tokio", "tls-rustls", "migrate", "postgres", "macros" ] }
 
 # [profile.release]
 # opt-level = 3

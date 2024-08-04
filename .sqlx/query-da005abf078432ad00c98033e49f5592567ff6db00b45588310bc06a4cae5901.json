@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT remove_chat($1, 'wednesday')",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "remove_chat",
+        "type_info": "Void"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "da005abf078432ad00c98033e49f5592567ff6db00b45588310bc06a4cae5901"
+}
