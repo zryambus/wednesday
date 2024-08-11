@@ -2,7 +2,6 @@ mod bot;
 mod cache;
 mod config;
 mod database;
-mod errors;
 mod rates;
 mod scheduler;
 mod toads;
@@ -12,13 +11,14 @@ use std::sync::{Arc, RwLock};
 use crate::{bot::Gauss, database::Database};
 
 use anyhow::Result;
+use build_time::build_time_utc;
 use teloxide::prelude::*;
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber::{fmt, prelude::*, registry::Registry};
+use tracing_subscriber::{fmt, prelude::*};
 
 async fn try_main(cfg: config::Cfg) -> Result<()> {
-    let db_path = cfg.db()?;
-    let cache_path = cfg.cache()?;
+    let db_path = cfg.db;
+    let cache_path = cfg.cache;
 
     let pool = sqlx::PgPool::connect(&db_path).await?;
 
@@ -31,9 +31,9 @@ async fn try_main(cfg: config::Cfg) -> Result<()> {
         tracing::debug!("database connection established");
     }
 
-    let token = cfg.token()?;
+    let token = cfg.token.clone();
     let bot = teloxide::Bot::new(token);
-    let admin_user_id = cfg.admin_user_id()?;
+    let admin_user_id = cfg.admin_user_id;
 
     let _scheduler = scheduler::Scheduler::new(bot.clone(), pool.clone(), cache_pool.clone());
 
@@ -41,7 +41,7 @@ async fn try_main(cfg: config::Cfg) -> Result<()> {
         .dependencies(dptree::deps![
             pool.clone(),
             cache_pool.clone(),
-            cfg.bot_name()?,
+            cfg.bot_name.clone(),
             Arc::new(RwLock::new(Gauss::new(17., 4.))),
             admin_user_id
         ])
@@ -71,27 +71,27 @@ async fn main() {
     let cfg = config::Cfg::new().expect("Could not initialize config");
 
     let mut options = sentry::ClientOptions::new();
-    options.release = sentry::release_name!();
-    options.traces_sample_rate = cfg
-        .traces_sample_rate()
-        .expect("Could not read traces_sample_rate value from config");
-
+    options.release = Some(std::borrow::Cow::from(build_time_utc!()));
+    options.attach_stacktrace = true;
+    options.traces_sample_rate = cfg.traces_sample_rate;
     #[cfg(debug_assertions)]
     {
         options.debug = true;
     }
+    options.debug = true;
 
-    let _guard = sentry::init((cfg.sentry_url().unwrap(), options));
+    let _guard = sentry::init((cfg.sentry_url.clone(), options));
 
     let fmt_layer = fmt::layer()
         .with_target(false)
         .with_filter(LevelFilter::INFO);
 
-    Registry::default()
-        .with(sentry::integrations::tracing::layer())
+    let sentry_layer = sentry::integrations::tracing::layer().with_filter(LevelFilter::INFO);
+
+    tracing_subscriber::registry()
+        .with(sentry_layer)
         .with(fmt_layer)
-        .try_init()
-        .unwrap();
+        .init();
 
     if let Err(ref e) = try_main(cfg).await {
         sentry::integrations::anyhow::capture_anyhow(e);

@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT chat_id FROM chats WHERE 'crypto' = ANY(enabled_notifications)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "chat_id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "2bd9a6700238bebd31b04e7c2ab35d25820f6b4871190d8c7f0f076da39bf289"
+}

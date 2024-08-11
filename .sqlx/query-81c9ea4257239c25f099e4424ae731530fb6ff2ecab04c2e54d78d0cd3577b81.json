@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT chat_id FROM chats WHERE 'wednesday' = ANY(enabled_notifications)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "chat_id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "81c9ea4257239c25f099e4424ae731530fb6ff2ecab04c2e54d78d0cd3577b81"
+}

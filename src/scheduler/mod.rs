@@ -129,12 +129,19 @@ impl Scheduler {
 
     #[tracing::instrument]
     async fn send_toads(bot: Bot, pool: Pool) -> anyhow::Result<()> {
+        tracing::info!("Sending toads");
         let db = Database::new(pool.clone()).await?;
         let chats = retry! { db.get_all_active_chats().await, 3, 1000 }?;
         let url = crate::toads::get_toad();
+        let mapping = retry! { db.get_mapping().await }?;
 
         for chat in chats {
-            tracing::warn!("Sending toad to dude {}", chat);
+            let name = mapping
+                .get(&chat)
+                .cloned()
+                .unwrap_or(String::from("(empty)"));
+
+            tracing::info!("Sending toad to dude {}, name = {}", chat, name);
             if let Err(e) = bot.send_message(ChatId(chat), &url).send().await {
                 sentry::capture_error(&e);
 
@@ -142,22 +149,25 @@ impl Scheduler {
                     RequestError::Api(ref kind) => match kind {
                         ApiError::BotBlocked => {
                             tracing::warn!(
-                                "Chat {} blocked the bot. Removing from active chats",
-                                chat
+                                "Chat {} ({}) blocked the bot. Removing from active chats",
+                                chat,
+                                name
                             );
                             db.remove(chat).await?;
                         }
                         ApiError::ChatNotFound => {
                             tracing::warn!(
-                                "Chat {} was not found. Removing from active chats",
-                                chat
+                                "Chat {} ({}) was not found. Removing from active chats",
+                                chat,
+                                name
                             );
                             db.remove(chat).await?;
                         }
                         ApiError::UserDeactivated => {
                             tracing::warn!(
-                                "Chat {} was deactivated. Removing from active chats",
-                                chat
+                                "Chat {} ({}) was deactivated. Removing from active chats",
+                                chat,
+                                name
                             );
                             db.remove(chat).await?;
                         }
@@ -178,6 +188,8 @@ impl Scheduler {
 
     #[tracing::instrument]
     async fn send_rates(bot: Bot, pool: Pool) -> anyhow::Result<()> {
+        tracing::info!("Send rates");
+
         let db = Database::new(pool.clone()).await?;
         let chats = retry! { db.get_all_active_crypto_chats().await, 3, 1000 }?;
 
@@ -246,6 +258,14 @@ impl Scheduler {
         }
 
         let chats = retry! { db.get_all_active_crypto_chats().await, 3, 1000 }?;
+
+        tracing::info!(
+            "send {} rate change {} for chats {:?}",
+            provider.coin(),
+            last_rate_check.rate,
+            chats
+        );
+
         for chat in chats {
             let text = format!(
                 "{} rate now is {}$ {}",

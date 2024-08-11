@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 use crate::cache::{Cache, CachePool};
@@ -161,6 +162,7 @@ pub enum AdminCommand {
     Wednesday,
 }
 
+#[tracing::instrument]
 pub async fn admin_commands_endpoint(
     bot: Bot,
     msg: Message,
@@ -199,9 +201,14 @@ pub async fn on_start(bot: Bot, msg: Message, db: Database) -> Result<()> {
             .send()
             .await?;
     } else {
+        let err = anyhow::anyhow!("Current chat is alread in the list");
+        let span = tracing::info_span!("Send message");
+        let guard = span.enter();
+        sentry::integrations::anyhow::capture_anyhow(&err);
         bot.send_message(msg.chat.id, "⚠ Current chat is already in the list")
             .send()
             .await?;
+        drop(guard);
     }
 
     Ok(())
@@ -369,7 +376,7 @@ pub async fn on_dominance(bot: Bot, msg: Message, cache_pool: CachePool) -> Resu
     async fn request_dominance(cache: &Cache) -> Result<(f64, f64)> {
         let url = "https://pro-api.coinmarketcap.com/v1/global-metrics/quotes/latest";
         let cfg = crate::config::Cfg::new()?;
-        let api_key = cfg.coin_market_api_key()?;
+        let api_key = cfg.coin_market_api_key.clone();
 
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
@@ -423,7 +430,6 @@ pub async fn on_dominance(bot: Bot, msg: Message, cache_pool: CachePool) -> Resu
     Ok(())
 }
 
-#[instrument]
 pub async fn text_handler(
     bot: Bot,
     msg: Message,
@@ -454,7 +460,6 @@ pub async fn text_handler(
     Ok(())
 }
 
-#[instrument]
 pub async fn admin_text_handler(
     bot: Bot,
     msg: Message,
@@ -583,6 +588,7 @@ pub async fn messages_handler(bot: Bot, msg: Message, message: Message, pool: Po
     Ok(())
 }
 
+#[instrument]
 pub async fn update_users_mapping(_bot: &Bot, user: Option<&User>, pool: Pool) -> Result<()> {
     let user = match user {
         Some(u) => u,
@@ -590,9 +596,9 @@ pub async fn update_users_mapping(_bot: &Bot, user: Option<&User>, pool: Pool) -
     };
 
     let db = Database::new(pool).await?;
-    let mut mapping = vec![];
+    let mut mapping = HashMap::new();
     if let Some(ref username) = user.username {
-        mapping.push((user.id.0 as i64, username.clone()));
+        mapping.insert(user.id.0 as i64, username.clone());
     } else {
         let first_name = &user.first_name;
         let username = if let Some(ref last_name) = user.last_name {
@@ -600,7 +606,7 @@ pub async fn update_users_mapping(_bot: &Bot, user: Option<&User>, pool: Pool) -
         } else {
             format!("{} {}", first_name, user.id)
         };
-        mapping.push((user.id.0 as i64, username));
+        mapping.insert(user.id.0 as i64, username);
     }
     db.update_mapping(mapping).await?;
     Ok(())
@@ -806,4 +812,3 @@ fn escape_text(text: String) -> Result<String> {
     let escape_regex = get_escape_regex()?;
     Ok(escape_regex.replace_all(&text, "\\$0").to_string())
 }
-

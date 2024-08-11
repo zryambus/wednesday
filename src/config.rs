@@ -1,10 +1,16 @@
 use anyhow::Result;
-use config::{self};
-use std::sync::{RwLock, RwLockReadGuard};
+use config;
 
-use crate::errors::MyError;
-
-pub struct Cfg(RwLock<config::Config>);
+pub struct Cfg {
+    pub bot_name: String,
+    pub token: String,
+    pub sentry_url: String,
+    pub coin_market_api_key: String,
+    pub db: String,
+    pub cache: String,
+    pub traces_sample_rate: f32,
+    pub admin_user_id: AdminUserId,
+}
 
 impl Cfg {
     pub fn new() -> Result<Self> {
@@ -12,48 +18,16 @@ impl Cfg {
             .add_source(config::File::with_name("config"))
             .add_source(config::Environment::with_prefix("WEDNESDAY"))
             .build()?;
-        Ok(Self(RwLock::new(settings)))
-    }
-
-    pub fn read(&self) -> Result<RwLockReadGuard<config::Config>> {
-        Ok(self.0.read().map_err(|_e| MyError::ConfigLockError)?)
-    }
-
-    // pub fn write(&self) -> Result<RwLockWriteGuard<config::Config>> {
-    //     Ok(self.0.write().map_err(|_e| MyError::ConfigLockError)?)
-    // }
-
-    pub fn bot_name(&self) -> Result<String> {
-        Ok(self.read()?.get_string("bot_name")?)
-    }
-
-    pub fn token(&self) -> Result<String> {
-        Ok(self.read()?.get_string("token")?)
-    }
-
-    pub fn sentry_url(&self) -> Result<String> {
-        Ok(self.read()?.get_string("sentry_url")?)
-    }
-
-    pub fn coin_market_api_key(&self) -> Result<String> {
-        Ok(self.read()?.get_string("coin_market_api_key")?)
-    }
-
-    pub fn db(&self) -> Result<String> {
-        Ok(self.read()?.get_string("db")?)
-    }
-
-    pub fn cache(&self) -> Result<String> {
-        Ok(self.read()?.get_string("cache")?)
-    }
-
-    pub fn traces_sample_rate(&self) -> Result<f32> {
-        Ok(self.read()?.get_float("traces_sample_rate")? as f32)
-    }
-
-    pub fn admin_user_id(&self) -> Result<AdminUserId> {
-        let id = self.read()?.get_int("admin_user_id")?;
-        Ok(AdminUserId(id))
+        Ok(Self {
+            bot_name: settings.get_string("bot_name")?,
+            token: settings.get_string("token")?,
+            sentry_url: settings.get_string("sentry_url")?,
+            coin_market_api_key: settings.get_string("coin_market_api_key")?,
+            db: settings.get_string("db")?,
+            cache: settings.get_string("cache")?,
+            traces_sample_rate: settings.get_float("traces_sample_rate")? as f32,
+            admin_user_id: AdminUserId(settings.get_int("admin_user_id")?),
+        })
     }
 }
 
