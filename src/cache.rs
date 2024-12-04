@@ -42,7 +42,6 @@ impl Cache {
     const KEY_ETH_DOMINANCE: &'static str = "ETH_DOMINANCE";
     const KEY_BTC_LAST_RATE: &'static str = "BTC_LAST_RATE";
     const KEY_ETH_LAST_RATE: &'static str = "ETH_LAST_RATE";
-    const KEY_ZEE_LAST_RATE: &'static str = "ZEE_LAST_RATE";
     const KEY_BNB_LAST_RATE: &'static str = "BNB_LAST_RATE";
     const KEY_NOT_LAST_RATE: &'static str = "NOT_LAST_RATE";
     const KEY_TON_LAST_RATE: &'static str = "TON_LAST_RATE";
@@ -74,16 +73,17 @@ impl Cache {
     }
 
     pub async fn set_btc_dominance(&self, value: f64) -> anyhow::Result<()> {
-        pipe()
+        let _: () = pipe()
             .set(Self::KEY_BTC_DOMINANCE, value)
             .expire(Self::KEY_BTC_DOMINANCE, 20 * 60)
+            .ignore()
             .query_async(&mut *self.connection().await?)
             .await?;
         Ok(())
     }
 
     pub async fn set_eth_dominance(&self, value: f64) -> anyhow::Result<()> {
-        pipe()
+        let _: () = pipe()
             .set(Self::KEY_ETH_DOMINANCE, value)
             .expire(Self::KEY_ETH_DOMINANCE, 20 * 60)
             .query_async(&mut *self.connection().await?)
@@ -105,12 +105,12 @@ impl Cache {
     async fn add_last_rate(&self, key: &str, value: &RateCheck) -> anyhow::Result<()> {
         let mut connection = self.connection().await?;
 
-        connection.lpush(key, value).await?;
+        let _: () = connection.lpush(key, value).await?;
 
         let len: usize = connection.llen(key).await?;
 
         if len > 3 {
-            connection.ltrim(key, 0, 2).await?;
+            let _: () = connection.ltrim(key, 0, 2).await?;
         }
 
         Ok(())
@@ -130,14 +130,6 @@ impl Cache {
 
     pub async fn add_last_eth_rate(&self, value: &RateCheck) -> anyhow::Result<()> {
         self.add_last_rate(Self::KEY_ETH_LAST_RATE, value).await
-    }
-
-    pub async fn get_last_zee_rate(&self) -> anyhow::Result<Vec<RateCheck>> {
-        self.get_last_rate(Self::KEY_ZEE_LAST_RATE).await
-    }
-
-    pub async fn add_last_zee_rate(&self, value: &RateCheck) -> anyhow::Result<()> {
-        self.add_last_rate(Self::KEY_ZEE_LAST_RATE, value).await
     }
 
     pub async fn get_last_bnb_rate(&self) -> anyhow::Result<Vec<RateCheck>> {
