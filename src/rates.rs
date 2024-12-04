@@ -1,6 +1,7 @@
 use crate::retry;
 use anyhow::{anyhow, Result};
 use serde::Deserialize;
+use serde_this_or_that::as_f64;
 use tracing::instrument;
 
 #[instrument]
@@ -175,13 +176,41 @@ async fn request_non_coin_rate(from: &str, to: &str) -> Result<f64> {
 }
 
 #[instrument]
+async fn request_rate_from_binance_with_24hr_change(coin: &str) -> Result<(f64, f64)> {
+    let url = format!("https://api.binance.com/api/v3/ticker/24hr?symbol={coin}USDT&type=FULL");
+
+    async fn request(url: &str) -> Result<(f64, f64)> {
+        #[derive(Debug, Deserialize)]
+        struct Response {
+            #[serde(rename = "lastPrice", deserialize_with = "as_f64")]
+            last_price: f64,
+            #[serde(rename = "priceChangePercent", deserialize_with = "as_f64")]
+            price_change_percent: f64,
+        }
+
+        let response = reqwest::get(url).await?;
+        let json: Response = response.json().await.map_err(|e| {
+            anyhow!(
+                "Failed to get response from {} as a JSON value: {:?}",
+                url,
+                e
+            )
+        })?;
+        Ok((json.last_price, json.price_change_percent))
+    }
+
+    let (rate, change) = retry! { request(&url).await }?;
+    Ok((rate, change))
+}
+
+#[instrument]
 pub async fn get_btc_rate() -> Result<f64> {
     request_rate_from_binance("BTC").await
 }
 
 #[instrument]
 pub async fn get_btc_rate_with_24hr_change() -> Result<(f64, f64)> {
-    request_rate_from_coingecko_with_24hr_change("bitcoin").await
+    request_rate_from_binance_with_24hr_change("BTC").await
 }
 
 #[instrument]
@@ -191,7 +220,7 @@ pub async fn get_eth_rate() -> Result<f64> {
 
 #[instrument]
 pub async fn get_eth_rate_with_24hr_change() -> Result<(f64, f64)> {
-    request_rate_from_coingecko_with_24hr_change("ethereum").await
+    request_rate_from_binance_with_24hr_change("ETH").await
 }
 
 #[instrument]
@@ -246,7 +275,7 @@ pub async fn get_sol_rate_with_24hr_change() -> Result<(f64, f64)> {
 
 #[instrument]
 pub async fn get_bnb_rate_with_24hr_change() -> Result<(f64, f64)> {
-    request_rate_from_coingecko_with_24hr_change("binancecoin").await
+    request_rate_from_binance_with_24hr_change("BNB").await
 }
 
 #[instrument]

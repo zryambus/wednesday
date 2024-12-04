@@ -31,6 +31,7 @@ alea = "=0.2.2"
 regex = "=1.10.4"
 sqlx = { version = "0.7", features = [ "runtime-tokio", "tls-rustls", "migrate", "postgres", "macros" ] }
 build-time = "0.1.3"
+serde-this-or-that = { version = "0.4.2", features = ["derive"] }
 
 # [profile.release]
 # opt-level = 3

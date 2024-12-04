@@ -95,6 +95,8 @@ pub async fn commands_endpoint(
         })
         .ok();
 
+    tracing::info!("received command {:?} from {:?}", command, msg.chat);
+
     match command {
         Command::Help => {
             bot.send_message(msg.chat.id, Command::descriptions().to_string())
@@ -305,6 +307,7 @@ pub async fn on_rates(bot: Bot, msg: Message) -> Result<()> {
             let e = anyhow::anyhow!(e);
             sentry::integrations::anyhow::capture_anyhow(&e);
             let text = format!("Failed to request currencies: {}", e);
+            tracing::error!(text);
             bot.send_message(chat, &text).send().await.ok();
             return Ok(());
         }

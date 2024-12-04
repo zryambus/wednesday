@@ -12,10 +12,20 @@ use tokio::task::JoinHandle;
 
 use rate_check_providers::{
     BNBRateCheckProvider, BTCRateCheckProvider, ETHRateCheckProvider, NOTRateCheckProvider,
-    TONRateCheckProvider, ZEERateCheckProvider,
 };
 
 use self::rate_check_providers::RateCheckProvider;
+
+#[derive(Debug, Clone)]
+enum Task {
+    Wednesday,
+    Crypto,
+    BTC,
+    ETH,
+    BNB,
+    NOT,
+    Heartbeat,
+}
 
 pub struct Scheduler {
     _schedule_handle: JoinHandle<()>,
@@ -27,83 +37,48 @@ impl Scheduler {
             chrono::FixedOffset::east_opt(3 * 3600).expect("Could not set tz for scheduler"),
         );
 
-        let b = bot.clone();
-        let p = pool.clone();
+        let (tx, rx) = tokio::sync::mpsc::channel::<Task>(10);
+        async fn emit_task(tx: tokio::sync::mpsc::Sender<Task>, task: Task) {
+            if let Err(e) = tx.send(task.clone()).await {
+                tracing::error!("Failed to emit {:?} task: {}", task, e);
+            }
+        }
 
-        scheduler.every(Wednesday).at("9:00 am").run(move || {
-            let b = b.clone();
-            let p = p.clone();
-            Self::async_task(move || Self::send_toads(b.clone(), p.clone()))
-        });
+        let t = tx.clone();
+        scheduler
+            .every(Wednesday)
+            .at("9:00 am")
+            .run(move || emit_task(t.clone(), Task::Wednesday));
 
-        let b = bot.clone();
-        let p = pool.clone();
+        let t = tx.clone();
         scheduler
             .every(1.day())
             .at("6:00 am")
             .and_every(1.day())
             .at("6:00 pm")
-            .run(move || {
-                let b = b.clone();
-                let p = p.clone();
-                Self::async_task(move || Self::send_rates(b.clone(), p.clone()))
-            });
+            .run(move || emit_task(t.clone(), Task::Crypto));
 
-        let b = bot.clone();
-        let p = pool.clone();
-        let cp = cache_pool.clone();
-        scheduler.every(10.minute()).run(move || {
-            let b = b.clone();
-            let p = p.clone();
-            let provider = BTCRateCheckProvider::from(cp.clone());
-            Self::async_task(move || Self::check_rate(b.clone(), p.clone(), provider.clone()))
-        });
+        let t = tx.clone();
+        scheduler
+            .every(10.minute())
+            .run(move || emit_task(t.clone(), Task::BTC));
+        let t = tx.clone();
+        scheduler
+            .every(10.minute())
+            .run(move || emit_task(t.clone(), Task::ETH));
+        let t = tx.clone();
+        scheduler
+            .every(10.minute())
+            .run(move || emit_task(t.clone(), Task::BNB));
+        let t = tx.clone();
+        scheduler
+            .every(10.minute())
+            .run(move || emit_task(t.clone(), Task::NOT));
 
-        let b = bot.clone();
-        let p = pool.clone();
-        let cp = cache_pool.clone();
-        scheduler.every(10.minute()).run(move || {
-            let b = b.clone();
-            let p = p.clone();
-            let provider = ETHRateCheckProvider::from(cp.clone());
-            Self::async_task(move || Self::check_rate(b.clone(), p.clone(), provider.clone()))
-        });
-
-        let b = bot.clone();
-        let p = pool.clone();
-        let cp = cache_pool.clone();
-        scheduler.every(10.minute()).run(move || {
-            let b = b.clone();
-            let p = p.clone();
-            let provider = BNBRateCheckProvider::from(cp.clone());
-            Self::async_task(move || Self::check_rate(b.clone(), p.clone(), provider.clone()))
-        });
-
-        let b = bot.clone();
-        let p = pool.clone();
-        let cp = cache_pool.clone();
-        scheduler.every(10.minute()).run(move || {
-            let b = b.clone();
-            let p = p.clone();
-            let provider = NOTRateCheckProvider::from(cp.clone());
-            Self::async_task(move || Self::check_rate(b.clone(), p.clone(), provider.clone()))
-        });
-
-        let b = bot.clone();
-        let p = pool.clone();
-        let cp = cache_pool.clone();
-        scheduler.every(10.minute()).run(move || {
-            let b = b.clone();
-            let p = p.clone();
-            let provider = TONRateCheckProvider::from(cp.clone());
-            Self::async_task(move || Self::check_rate(b.clone(), p.clone(), provider.clone()))
-        });
-
-        scheduler.every(10.minute()).run(move || {
-            let b = bot.clone();
-            let p = pool.clone();
-            let provider = ZEERateCheckProvider::from(cache_pool.clone());
-            Self::async_task(move || Self::check_rate(b.clone(), p.clone(), provider.clone()))
+        let t = tx.clone();
+        scheduler.every(1.hour()).run(move || {
+            tracing::info!("emitting heartbeat");
+            emit_task(t.clone(), Task::Heartbeat)
         });
 
         let handle = tokio::task::spawn(async move {
@@ -113,17 +88,53 @@ impl Scheduler {
             }
         });
 
+        let _thread = tokio::spawn(Self::worker(bot, pool, cache_pool, rx));
+
         Self {
             _schedule_handle: handle,
         }
     }
 
-    async fn async_task<Fut>(task: impl Fn() -> Fut)
-    where
-        Fut: std::future::Future<Output = anyhow::Result<()>> + Send,
-    {
-        if let Err(ref e) = task().await {
-            sentry::integrations::anyhow::capture_anyhow(e);
+    async fn worker(
+        bot: teloxide::Bot,
+        pool: Pool,
+        cache_pool: CachePool,
+        mut rx: tokio::sync::mpsc::Receiver<Task>,
+    ) {
+        loop {
+            tokio::select! {
+                Some(task) = rx.recv() => {
+                    tracing::info!("Scheduler worker received a task: {:?}", task);
+
+                    let res = match task {
+                            Task::Wednesday => Self::send_toads(bot.clone(), pool.clone()).await,
+                            Task::Crypto => Self::send_rates(bot.clone(), pool.clone()).await,
+                            Task::BTC => {
+                                let provider = BTCRateCheckProvider::from(cache_pool.clone());
+                                Self::check_rate(bot.clone(), pool.clone(), provider).await
+                            },
+                            Task::ETH => {
+                                let provider = ETHRateCheckProvider::from(cache_pool.clone());
+                                Self::check_rate(bot.clone(), pool.clone(), provider).await
+                            },
+                            Task::BNB => {
+                                let provider = BNBRateCheckProvider::from(cache_pool.clone());
+                                Self::check_rate(bot.clone(), pool.clone(), provider).await
+                            },
+                            Task::NOT => {
+                                let provider = NOTRateCheckProvider::from(cache_pool.clone());
+                                Self::check_rate(bot.clone(), pool.clone(), provider).await
+                            },
+                            Task::Heartbeat => {
+                                tracing::info!("received heartbeat");
+                                Ok(())
+                            }
+                    };
+                    if let Err(e) = res {
+                        tracing::error!("Scheduled task {:?} finished with error: {}", task, e);
+                    }
+                }
+            }
         }
     }
 
@@ -207,7 +218,7 @@ impl Scheduler {
         Ok(())
     }
 
-    #[tracing::instrument(skip(provider))]
+    #[tracing::instrument(skip(provider), fields(coin = provider.coin()))]
     async fn check_rate(
         bot: Bot,
         pool: Pool,
