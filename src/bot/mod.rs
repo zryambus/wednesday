@@ -87,7 +87,7 @@ pub async fn commands_endpoint(
 ) -> Result<()> {
     let db = Database::new(pool.clone()).await?;
 
-    update_users_mapping(&bot, msg.from(), pool.clone())
+    update_users_mapping(&bot, &msg.from, pool.clone())
         .await
         .map_err(|e| {
             tracing::error!("Failed to update users mapping: {}", e);
@@ -439,14 +439,14 @@ pub async fn text_handler(
     pool: Pool,
     admin_user_id: AdminUserId,
 ) -> Result<()> {
-    let user_id = if let Some(from) = msg.from() {
+    let user_id = if let Some(ref from) = msg.from {
         from.id
     } else {
         tracing::debug!("Could not update statistics for message: {:?}", msg);
         return Ok(());
     };
 
-    update_users_mapping(&bot, msg.from(), pool.clone()).await?;
+    update_users_mapping(&bot, &msg.from, pool.clone()).await?;
 
     if msg.chat.is_private() {
         bot.send_message(
@@ -579,7 +579,7 @@ pub async fn admin_text_handler(
 #[instrument]
 pub async fn messages_handler(bot: Bot, msg: Message, message: Message, pool: Pool) -> Result<()> {
     async fn impl_fn(bot: Bot, msg: Message, _message: Message, pool: Pool) -> Result<()> {
-        update_users_mapping(&bot, msg.from(), pool.clone()).await?;
+        update_users_mapping(&bot, &msg.from, pool.clone()).await?;
 
         Ok(())
     }
@@ -592,7 +592,7 @@ pub async fn messages_handler(bot: Bot, msg: Message, message: Message, pool: Po
 }
 
 #[instrument]
-pub async fn update_users_mapping(_bot: &Bot, user: Option<&User>, pool: Pool) -> Result<()> {
+pub async fn update_users_mapping(_bot: &Bot, user: &Option<User>, pool: Pool) -> Result<()> {
     let user = match user {
         Some(u) => u,
         None => return Ok(()),
@@ -622,7 +622,7 @@ pub async fn process_sticker(bot: Bot, msg: Message, sticker: &Sticker) -> Resul
     if sticker.file.unique_id.as_str() == FORBIDDEN_STICKER_ID {
         bot.delete_message(msg.chat.id, msg.id).send().await?;
 
-        let from = match msg.from() {
+        let from = match msg.from {
             Some(from) => from,
             _ => return Ok(()),
         };
@@ -652,7 +652,7 @@ async fn on_usd(bot: Bot, msg: Message) -> Result<()> {
 async fn on_all(bot: Bot, msg: Message) -> Result<()> {
     let _bot = &bot;
 
-    let _user_id = msg.from().unwrap().id;
+    let _user_id = msg.from.unwrap().id;
     let _chat_id = msg.chat.id;
 
     Ok(())

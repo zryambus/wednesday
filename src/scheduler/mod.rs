@@ -187,8 +187,8 @@ impl Scheduler {
                     RequestError::MigrateToChatId(chat_id) => {
                         tracing::warn!("Chat {} was migrated to {}. Replacing", chat, chat_id);
                         db.remove(chat).await?;
-                        db.add(chat_id).await?;
-                        bot.send_message(ChatId(chat_id), &url).send().await.ok();
+                        db.add(chat_id.0).await?;
+                        bot.send_message(chat_id, &url).send().await.ok();
                     }
                     _ => {}
                 }
@@ -204,12 +204,12 @@ impl Scheduler {
         let db = Database::new(pool.clone()).await?;
         let chats = retry! { db.get_all_active_crypto_chats().await, 3, 1000 }?;
 
-        let rate = crate::rates::get_btc_rate().await?;
+        let rate = crate::rates::get_eth_rate().await?;
 
-        let text = if rate > 100_000. {
-            format!("Когда ламба? Сегодня! Курс BTC = {}$", rate)
+        let text = if rate > 5_000. {
+            format!("Когда майбук? Сегодня! Курс ETH = {}$", rate)
         } else {
-            format!("Когда ламба? Не сегодня. Курс BTC = {}$", rate)
+            format!("Когда майбук? Не сегодня. Курс ETH = {}$", rate)
         };
 
         for chat in chats {

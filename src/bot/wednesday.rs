@@ -34,7 +34,7 @@ impl WednesdayBot {
                 sentry::capture_error(&e);
                 match e {
                     RequestError::RetryAfter(timeout) => {
-                        tokio::time::sleep(std::time::Duration::from_secs(timeout.as_secs())).await;
+                        tokio::time::sleep(timeout.duration()).await;
                     }
                     RequestError::Network(error) => {
                         tracing::debug!("Got network error while sending message: {}", error);
@@ -42,7 +42,7 @@ impl WednesdayBot {
                     }
                     RequestError::MigrateToChatId(new_chat_id) => {
                         self.bot()
-                            .send_message(ChatId(new_chat_id), text.clone())
+                            .send_message(new_chat_id, text.clone())
                             .send()
                             .await?;
                         return Ok(());
