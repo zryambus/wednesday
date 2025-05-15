@@ -1,4 +1,4 @@
-use rand::seq::SliceRandom;
+use rand::seq::IndexedRandom;
 
 const TOADS: &[&str] = &[
     "9K4-jllrPrE",
@@ -56,6 +56,7 @@ const TOADS: &[&str] = &[
 ];
 
 pub fn get_toad() -> String {
-    let video_id = TOADS.choose(&mut rand::thread_rng()).unwrap();
+    let mut r = rand::rng();
+    let video_id = *TOADS.choose(&mut r).unwrap();
     format!("https://youtu.be/{}", video_id)
 }

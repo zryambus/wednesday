@@ -711,8 +711,8 @@ pub fn get_handler() -> Handler<'static, DependencyMap, Result<()>, DpHandlerDes
     }
 
     fn get_toxicity_level(id: UserId) -> u32 {
-        let mut rng = rand::thread_rng();
-        let mut percents = rng.gen_range(0..=100);
+        let mut rng = rand::rng();
+        let mut percents = rng.random_range(0..=100);
         if id.0 == 203295139 {
             percents = 200;
         }
