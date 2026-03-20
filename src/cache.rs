@@ -1,4 +1,4 @@
-use bb8_redis::redis::{from_redis_value, RedisResult, RedisWrite, Value};
+use bb8_redis::redis::{ParsingError, RedisWrite, Value, from_redis_value};
 use bb8_redis::{
     bb8,
     redis::{pipe, AsyncCommands, FromRedisValue, ToRedisArgs},
@@ -31,7 +31,7 @@ impl ToRedisArgs for RateCheck {
 }
 
 impl FromRedisValue for RateCheck {
-    fn from_redis_value(v: &Value) -> RedisResult<Self> {
+    fn from_redis_value(v: Value) -> Result<Self, ParsingError> {
         let data: Vec<u8> = from_redis_value(v)?;
         Ok(serde_cbor::from_slice(&data).expect("Could not serialize RateCheck value"))
     }

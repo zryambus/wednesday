@@ -8,7 +8,7 @@ use crate::rates;
 
 use anyhow::{anyhow, Error, Result};
 use futures::try_join;
-use rand::Rng;
+use rand::RngExt;
 use serde::Deserialize;
 use teloxide::dispatching::{DpHandlerDescription, UpdateFilterExt};
 use teloxide::types::InputFile;
@@ -508,7 +508,7 @@ pub async fn admin_text_handler(
 
         match msg.photo() {
             Some(photos) => {
-                bot.send_photo(chat_id, InputFile::file_id(&photos[0].file.id))
+                bot.send_photo(chat_id, InputFile::file_id(photos[0].file.id.clone()))
                     .caption(reply_text)
                     .parse_mode(MarkdownV2)
                     .send()
@@ -542,7 +542,7 @@ pub async fn admin_text_handler(
             let chat_id = ChatId(chat);
             match msg.photo() {
                 Some(photos) => {
-                    bot.send_photo(chat_id, InputFile::file_id(&photos[0].file.id))
+                    bot.send_photo(chat_id, InputFile::file_id(photos[0].file.id.clone()))
                         .caption(&broadcast_text)
                         .parse_mode(MarkdownV2)
                         .send()
@@ -619,7 +619,7 @@ pub async fn update_users_mapping(_bot: &Bot, user: &Option<User>, pool: Pool) -
 pub async fn process_sticker(bot: Bot, msg: Message, sticker: &Sticker) -> Result<()> {
     const FORBIDDEN_STICKER_ID: &str = "AgADvgADzHD_Ag";
 
-    if sticker.file.unique_id.as_str() == FORBIDDEN_STICKER_ID {
+    if sticker.file.unique_id.0 == FORBIDDEN_STICKER_ID {
         bot.delete_message(msg.chat.id, msg.id).send().await?;
 
         let from = match msg.from {
@@ -705,7 +705,7 @@ impl Gauss {
     }
 }
 
-pub fn get_handler() -> Handler<'static, DependencyMap, Result<()>, DpHandlerDescription> {
+pub fn get_handler() -> Handler<'static, Result<(), anyhow::Error>, DpHandlerDescription> {
     async fn dummy() -> Result<()> {
         Ok(())
     }
