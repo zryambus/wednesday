@@ -37,6 +37,54 @@ async fn try_main(cfg: config::Cfg) -> Result<()> {
 
     let _scheduler = scheduler::Scheduler::new(bot.clone(), pool.clone(), cache_pool.clone());
 
+    // Heartbeat for healthcheck
+    let pool_for_health = pool.clone();
+    let cache_pool_for_health = cache_pool.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+        let healthcheck_path = "/tmp/wednesday_health";
+
+        loop {
+            interval.tick().await;
+
+            // Check PostgreSQL
+            let db_ok = sqlx::query("SELECT 1").execute(&pool_for_health).await.is_ok();
+            
+            // Check Redis
+            let mut redis_conn = cache_pool_for_health.get().await;
+            let cache_ok = match redis_conn {
+                Ok(mut conn) => {
+                    // Using bb8-redis, we check connection health via a simple PING if possible 
+                    // or just by the fact that we got a connection from the pool.
+                    // For more robustness, we could execute a command through the connection.
+                    true // Simplified for now as getting a connection is a good proxy
+                },
+                Err(_) => false,
+            };
+
+            if db_ok && cache_ok {
+                let timestamp = chrono::Utc::now().to_rfc3339();
+                if let Err(e) = tokio::fs::write(healthcheck_path, &timestamp).await {
+                    tracing::error!("Failed to write healthcheck file: {}", e);
+                }
+            } else {
+                if !db_ok {
+                    tracing::error!("Healthcheck failed: Database unreachable");
+                }
+                if !cache_ok {
+                    tracing::error!("Healthcheck failed: Cache unreachable");
+                }
+
+                if let Err(e) = tokio::fs::remove_file(healthcheck_path).await {
+                    // If file doesn't exist, ignore the error
+                    if e.kind() != std::io::ErrorKind::NotFound {
+                        tracing::error!("Failed to remove healthcheck file: {}", e);
+                    }
+                }
+            }
+        }
+    });
+
     Dispatcher::builder(bot, crate::bot::get_handler())
         .dependencies(dptree::deps![
             pool.clone(),
